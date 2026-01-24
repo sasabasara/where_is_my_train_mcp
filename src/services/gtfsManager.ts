@@ -4,7 +4,7 @@ import * as path from 'path';
 import * as https from 'https';
 import { createWriteStream } from 'fs';
 import StreamZip from 'node-stream-zip';
-import { parseCSV } from '../utils/csvParser';
+import { parseCSV } from '../utils/csvParser.js';
 
 interface GTFSConfig {
   url: string;
@@ -23,15 +23,15 @@ export class GTFSManager {
     },
     {
       url: 'https://rrgtfsfeeds.s3.amazonaws.com/gtfs_supplemented.zip',
-      cacheDir: 'cache/gtfs_supplemented', 
+      cacheDir: 'cache/gtfs_supplemented',
       cacheDurationMs: 50 * 60 * 1000,
       name: 'supplemented'
     }
   ];
 
   private static readonly REQUIRED_FILES = [
-    'stops.txt', 
-    'transfers.txt', 
+    'stops.txt',
+    'transfers.txt',
     'routes.txt'
   ];
 
@@ -49,7 +49,7 @@ export class GTFSManager {
 
   private static async ensureFreshData(config: GTFSConfig): Promise<void> {
     const cacheValid = await this.isCacheValid(config);
-    
+
     if (!cacheValid) {
       await this.downloadAndExtract(config);
     }
@@ -59,21 +59,21 @@ export class GTFSManager {
     try {
       const cacheDir = path.join(process.cwd(), config.cacheDir);
       await fs.access(cacheDir, fsConstants.F_OK);
-      
+
       const timestampFile = path.join(cacheDir, '.timestamp');
       await fs.access(timestampFile, fsConstants.F_OK);
-      
-      const allFilesExist = await Promise.all(this.REQUIRED_FILES.map(file => 
+
+      const allFilesExist = await Promise.all(this.REQUIRED_FILES.map(file =>
         fs.access(path.join(cacheDir, file), fsConstants.F_OK).then(() => true).catch(() => false)
       ));
-      
+
       if (!allFilesExist.every(Boolean)) {
         return false;
       }
 
       const timestamp = parseInt(await fs.readFile(timestampFile, 'utf-8'));
       const age = Date.now() - timestamp;
-      
+
       return age < config.cacheDurationMs;
     } catch {
       return false;
@@ -83,40 +83,40 @@ export class GTFSManager {
   private static async downloadAndExtract(config: GTFSConfig): Promise<void> {
     const cacheDir = path.join(process.cwd(), config.cacheDir);
     const zipPath = path.join(cacheDir, 'gtfs.zip');
-    
+
     await fs.mkdir(cacheDir, { recursive: true });
 
     await this.downloadFile(config.url, zipPath);
-    
+
     await this.extractRequiredFiles(zipPath, cacheDir);
-    
+
     await this.validateExtractedFiles(cacheDir);
-    
+
     await fs.writeFile(
-      path.join(cacheDir, '.timestamp'), 
+      path.join(cacheDir, '.timestamp'),
       Date.now().toString()
     );
-    
+
     await fs.unlink(zipPath);
   }
 
   private static async downloadFile(url: string, outputPath: string): Promise<void> {
     return new Promise((resolve, reject) => {
       const file = createWriteStream(outputPath);
-      
+
       https.get(url, (response) => {
         if (response.statusCode !== 200) {
           reject(new Error(`HTTP ${response.statusCode}: ${response.statusMessage}`));
           return;
         }
-        
+
         response.pipe(file);
-        
+
         file.on('finish', () => {
           file.close();
           resolve();
         });
-        
+
         file.on('error', reject);
       }).on('error', reject);
     });
@@ -124,12 +124,12 @@ export class GTFSManager {
 
   private static async extractRequiredFiles(zipPath: string, outputDir: string): Promise<void> {
     const zip = new StreamZip.async({ file: zipPath });
-    
+
     try {
       const entries = await zip.entries();
       const targetFiles = this.REQUIRED_FILES;
       let extractedCount = 0;
-      
+
       for (const [fileName, entry] of Object.entries(entries)) {
         if (targetFiles.includes(fileName)) {
           const outputPath = path.join(outputDir, fileName);
@@ -137,11 +137,11 @@ export class GTFSManager {
           extractedCount++;
         }
       }
-      
+
       if (extractedCount === 0) {
         throw new Error(`No required GTFS files found in ZIP archive`);
       }
-      
+
     } finally {
       await zip.close();
     }
@@ -164,13 +164,13 @@ export class GTFSManager {
     routes: any[];
   }> {
     const cacheDir = path.join(process.cwd(), config.cacheDir);
-    
+
     const [stops, transfers, routes] = await Promise.all([
       this.parseCSVFile(path.join(cacheDir, 'stops.txt')),
       this.parseCSVFile(path.join(cacheDir, 'transfers.txt')),
       this.parseCSVFile(path.join(cacheDir, 'routes.txt')),
     ]);
-    
+
     return { stops, transfers, routes };
   }
 
