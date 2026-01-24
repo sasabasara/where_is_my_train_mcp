@@ -1,17 +1,18 @@
-import { fetchMTAData, fetchMTAAlerts } from "../services/mtaService.js";
+import { fetchMTAData, fetchMTAAlerts, fetchEquipmentOutages } from "../services/mtaService.js";
 import { StationMatcher, getStopsData, getTransfersData, getGTFSSourceInfo, refreshGTFS, ensureDataLoaded } from "../services/stationService.js";
 import { calculateDistance, getTrainDestination, getCurrentLocation, getMTADisclaimer } from "../utils/index.js";
 import { ServiceDisruptionAnalyzer } from "../services/serviceDisruptions.js";
-import { 
-  ToolResponse, 
-  FindStationArgs, 
-  NextTrainsArgs, 
-  ServiceStatusArgs, 
-  SubwayAlertsArgs, 
-  StationTransfersArgs, 
-  NearestStationArgs, 
- 
+import {
+  ToolResponse,
+  FindStationArgs,
+  NextTrainsArgs,
+  ServiceStatusArgs,
+  SubwayAlertsArgs,
+  StationTransfersArgs,
+  NearestStationArgs,
   ServiceDisruptionsArgs,
+  ElevatorEscalatorStatusArgs,
+  EquipmentOutage,
   GTFSEntity,
   MTAFeedData,
   Stop,
@@ -732,13 +733,13 @@ export async function handleStationTransfers(args: StationTransfersArgs): Promis
 
 export async function handleNearestStation(args: NearestStationArgs): Promise<ToolResponse> {
   await ensureDataLoaded();
-  
+
   const limit = Math.min(Number(args?.limit) || 5, 15); // Cap at 15
   const radius = Math.min(Number(args?.radius) || 1000, 2000); // Cap at 2km
   const accessibleOnly = args?.accessible_only || false;
   const includeWalkingDirections = args?.include_walking_directions || false;
   const serviceFilter = args?.service_filter || [];
-  
+
   // Require GPS coordinates
   if (args?.lat === undefined || args?.lon === undefined) {
     return {
@@ -754,10 +755,10 @@ export async function handleNearestStation(args: NearestStationArgs): Promise<To
       isError: true
     };
   }
-  
+
   const lat = Number(args.lat);
   const lon = Number(args.lon);
-  
+
   if (isNaN(lat) || isNaN(lon)) {
     return {
       content: [{
@@ -771,16 +772,16 @@ export async function handleNearestStation(args: NearestStationArgs): Promise<To
       isError: true
     };
   }
-  
+
   try {
     const stopsData = getStopsData();
-    
+
     // Find parent stations (location_type = 1) within radius
     const nearbyStations = stopsData
       .filter(stop => stop.location_type === '1' && stop.stop_lat && stop.stop_lon)
       .map(stop => {
         const distance = calculateDistance(
-          lat, lon, 
+          lat, lon,
           Number(stop.stop_lat), Number(stop.stop_lon)
         );
         return { ...stop, distance };
@@ -788,7 +789,7 @@ export async function handleNearestStation(args: NearestStationArgs): Promise<To
       .filter(stop => stop.distance <= radius)
       .sort((a, b) => a.distance - b.distance)
       .slice(0, limit);
-    
+
     if (nearbyStations.length === 0) {
       return {
         content: [{
@@ -804,7 +805,7 @@ export async function handleNearestStation(args: NearestStationArgs): Promise<To
         isError: true
       };
     }
-    
+
     const result = {
       searchLocation: { lat, lon },
       searchRadius: radius,
@@ -817,7 +818,7 @@ export async function handleNearestStation(args: NearestStationArgs): Promise<To
       stationsFound: nearbyStations.length,
       stations: nearbyStations.map((station, i) => {
         const walkingTime = Math.ceil(station.distance / 80); // ~80m/min walking speed
-        
+
         return {
           rank: i + 1,
           name: station.stop_name,
@@ -841,12 +842,12 @@ export async function handleNearestStation(args: NearestStationArgs): Promise<To
       }),
       walkingTips: includeWalkingDirections ? [
         "Use street-level signs to locate station entrances",
-        "Check for elevator access if needed", 
+        "Check for elevator access if needed",
         "Allow extra time during rush hours"
       ] : null,
       timestamp: Date.now()
     };
-    
+
     return {
       content: [{
         type: "text",
@@ -859,6 +860,124 @@ export async function handleNearestStation(args: NearestStationArgs): Promise<To
         type: "text",
         text: JSON.stringify({
           error: "Station search temporarily unavailable. Please try again later.",
+          errorType: "SERVICE_ERROR"
+        })
+      }],
+      isError: true
+    };
+  }
+}
+
+export async function handleElevatorEscalatorStatus(args: ElevatorEscalatorStatusArgs): Promise<ToolResponse> {
+  const stationQuery = args?.station?.toLowerCase().trim();
+  const equipmentType = args?.equipment_type || 'all';
+  const adaOnly = args?.ada_only || false;
+  const outageType = args?.outage_type || 'current';
+
+  try {
+    const allEquipment = await fetchEquipmentOutages();
+
+    let filteredEquipment = allEquipment;
+
+    // Filter by station if provided
+    if (stationQuery) {
+      filteredEquipment = filteredEquipment.filter((item: EquipmentOutage) =>
+        item.station.toLowerCase().includes(stationQuery)
+      );
+
+      if (filteredEquipment.length === 0) {
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              error: `No equipment found at stations matching "${args?.station}".`,
+              errorType: "STATION_NOT_FOUND",
+              searchQuery: args?.station,
+              suggestion: "Try a partial station name or check spelling"
+            })
+          }],
+          isError: true
+        };
+      }
+    }
+
+    // Filter by equipment type
+    if (equipmentType !== 'all') {
+      const typeCode = equipmentType === 'elevator' ? 'EL' : 'ES';
+      filteredEquipment = filteredEquipment.filter((item: EquipmentOutage) =>
+        item.equipmenttype === typeCode
+      );
+    }
+
+    // Filter by ADA accessibility
+    if (adaOnly) {
+      filteredEquipment = filteredEquipment.filter((item: EquipmentOutage) =>
+        item.ADA === 'Y'
+      );
+    }
+
+    // Filter by outage type
+    if (outageType === 'current') {
+      filteredEquipment = filteredEquipment.filter((item: EquipmentOutage) =>
+        item.isupcomingoutage === 'N'
+      );
+    } else if (outageType === 'upcoming') {
+      filteredEquipment = filteredEquipment.filter((item: EquipmentOutage) =>
+        item.isupcomingoutage === 'Y'
+      );
+    }
+
+    // Format the response
+    const result = {
+      timestamp: Date.now(),
+      timezone: 'America/New_York',
+      filters: {
+        station: stationQuery || null,
+        equipmentType,
+        adaOnly,
+        outageType
+      },
+      summary: {
+        totalOutages: filteredEquipment.length,
+        elevators: filteredEquipment.filter((e: EquipmentOutage) => e.equipmenttype === 'EL').length,
+        escalators: filteredEquipment.filter((e: EquipmentOutage) => e.equipmenttype === 'ES').length,
+        adaImpacted: filteredEquipment.filter((e: EquipmentOutage) => e.ADA === 'Y').length,
+        currentOutages: filteredEquipment.filter((e: EquipmentOutage) => e.isupcomingoutage === 'N').length,
+        upcomingOutages: filteredEquipment.filter((e: EquipmentOutage) => e.isupcomingoutage === 'Y').length
+      },
+      outages: filteredEquipment.map((item: EquipmentOutage) => ({
+        station: item.station,
+        lines: item.trainno,
+        equipment: {
+          id: item.equipment,
+          type: item.equipmenttype === 'EL' ? 'Elevator' : 'Escalator',
+          serving: item.serving,
+          adaAccessible: item.ADA === 'Y'
+        },
+        outage: {
+          startDate: item.outagedate,
+          estimatedReturn: item.estimatedreturntoservice,
+          reason: item.reason,
+          isUpcoming: item.isupcomingoutage === 'Y',
+          isMaintenance: item.ismaintenanceoutage === 'Y'
+        }
+      })),
+      note: "Equipment status data from MTA. Check mta.info for real-time updates."
+    };
+
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify(result)
+      }]
+    };
+  } catch (error) {
+    console.error('Elevator/Escalator status error occurred');
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify({
+          error: "Elevator and escalator status temporarily unavailable. Please try again later.",
           errorType: "SERVICE_ERROR"
         })
       }],

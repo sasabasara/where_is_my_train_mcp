@@ -16,4 +16,4 @@ COPY . .
 RUN npm run build
 
 # Start the MCP server
-CMD ["node", "dist/mcp-server.js"]
+CMD ["node", "dist/src/index.js"]

@@ -118,47 +118,82 @@ export async function fetchMTAData() {
 export async function fetchMTAAlerts() {
   const root = await gtfsRootPromise;
   const FeedMessage = root.lookupType("transit_realtime.FeedMessage");
-  
+
   const url = "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fsubway-alerts";
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 10000);
-  
+
   try {
-    const res = await fetch(url, { 
+    const res = await fetch(url, {
       signal: controller.signal,
       headers: {
         'User-Agent': 'whereismytrain-mcp/1.0'
       }
     });
-    
+
     clearTimeout(timeoutId);
-    
+
     if (!res.ok) {
       throw new Error(`HTTP ${res.status}: ${res.statusText}`);
     }
-    
+
     const buffer = Buffer.from(await res.arrayBuffer());
-    
+
     if (buffer.length === 0) {
       throw new Error('Empty alerts response');
     }
-    
+
     const message = FeedMessage.decode(buffer);
-    const decoded = FeedMessage.toObject(message, { 
-      longs: String, 
-      enums: String, 
-      bytes: String 
+    const decoded = FeedMessage.toObject(message, {
+      longs: String,
+      enums: String,
+      bytes: String
     });
-    
+
     if (!decoded || !Array.isArray(decoded.entity)) {
       throw new Error('Invalid alerts feed structure');
     }
-    
+
     return decoded;
   } catch (error: any) {
     clearTimeout(timeoutId);
     if (error.name === 'AbortError') {
       throw new Error('Alerts request timed out after 10 seconds');
+    }
+    throw error;
+  }
+}
+
+export async function fetchEquipmentOutages() {
+  const url = "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fnyct_ene.json";
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'whereismytrain-mcp/1.0'
+      }
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    }
+
+    const data = await res.json();
+
+    if (!Array.isArray(data)) {
+      throw new Error('Invalid equipment outage data structure');
+    }
+
+    return data;
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error('Equipment outage request timed out after 10 seconds');
     }
     throw error;
   }

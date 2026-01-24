@@ -6,8 +6,8 @@
   "module": "./src/index.ts",
   "type": "module",
   "scripts": {
-    "start": "npx @smithery/cli dev",
-    "dev": "npx @smithery/cli dev",
+    "start": "smithery dev",
+    "dev": "smithery dev",
     "build": "tsc",
     "prepublishOnly": "npm run build",
     "test": "echo 'Use npm run dev for Smithery development'"
@@ -33,7 +33,7 @@
     "url": "https://github.com/sasabasara/where_is_my_train_mcp/issues"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.17.3",
+    "@modelcontextprotocol/sdk": "^1.25.3",
     "node-fetch": "^3.3.2",
     "node-stream-zip": "^1.15.0",
     "protobufjs": "^7.5.4",
@@ -42,7 +42,7 @@
   "devDependencies": {
     "@types/node": "^22.17.2",
     "tsx": "^4.20.4",
-    "typescript": "^5.0.0"
+    "typescript": "^5.9.3"
   },
   "engines": {
     "node": ">=18.0.0"

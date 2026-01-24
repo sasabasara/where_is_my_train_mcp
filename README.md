@@ -1,31 +1,26 @@
-# Where's my train? MCP Server 
+# Where's My Train? MCP Server
 
 [![smithery badge](https://smithery.ai/badge/@sasabasara/where_is_my_train_mcp)](https://smithery.ai/server/@sasabasara/where_is_my_train_mcp)
 
-A MCP server for real-time NYC subway information. Leverages AI/LLM geographic knowledge for intelligent location handling and provides structured JSON data for stations, arrivals, alerts, and service status with live MTA data.
+A Model Context Protocol (MCP) server that provides real-time NYC subway information. It leverages AI and LLM geographic knowledge for intelligent location handling and provides structured JSON data for stations, arrivals, alerts, and service status using live MTA data.
 
-> **Data from MTA** • Personal use only • Not endorsed by MTA • Data provided "as is"
-
-## Quick Examples
-
-- "where's my train? I'm looking for the Q at DeKalb Av"
+> **Data from MTA** - Personal use only - Not endorsed by MTA - Data provided "as is"
 
 ## Features
 
-- **Real-time train arrivals** with crowding information
-- **Station search** with fuzzy matching and accessibility info
-- **Service alerts** and disruption analysis
-- **Intelligent location handling** - AI converts location names to coordinates
-- **Nearby station finder** using GPS coordinates or location names
-- **Transfer information** for complex routes
-- **Live MTA GTFS-RT data** from all subway lines
+- **Real-time train arrivals**: Arrival times, delay predictions, and crowding information.
+- **Station search**: Fuzzy matching and accessibility information.
+- **Service alerts**: Disruption analysis and service changes.
+- **Elevator & Escalator status**: Live outage information for accessibility planning.
+- **Intelligent location handling**: Converts location names to coordinates for spatial searches.
+- **Transfer information**: Connection details for complex routes.
+- **Live MTA GTFS-RT data**: Covers all subway lines.
 
 ## Usage
 
 ### Option 1: Use on Smithery (Recommended)
-**Instant access** - Visit [smithery.ai/server/@sasabasara/where_is_my_train_mcp](https://smithery.ai/server/@sasabasara/where_is_my_train_mcp) and click "Install" to add it to your AI client.
 
-No setup required - works immediately with Claude, ChatGPT, Cursor, and other MCP-compatible clients.
+Visit the [Smithery page](https://smithery.ai/server/@sasabasara/where_is_my_train_mcp) and click "Install" to add it to your AI client. No separate setup is required.
 
 ### Option 2: Run Locally
 
@@ -33,122 +28,101 @@ No setup required - works immediately with Claude, ChatGPT, Cursor, and other MC
 - Node.js 18+
 
 **Quick Start:**
+
 ```bash
 # Clone and install
 git clone <your-repo>
 cd whereismytrain-mcp
 npm install
 
-# Start development server (recommended)
+# Start development server
 npm run dev
 
 # Or start traditional MCP server
 npm start
 ```
 
-**That's it!** The server automatically downloads and caches MTA GTFS data on first run.
+The server automatically downloads and caches MTA GTFS data on the first run.
 
-### What You Can Do
+## Capabilities
 
-**Station-Based Queries:**
-- Find stations: `"find Times Square station"`
-- Next trains: `"next trains at Union Square"`
-- Transfers: `"transfers at Atlantic Ave"`
+### Tools
 
-**System Information:**
-- Service status and alerts
-- Real-time disruptions
-- Train crowding data
+#### Core Tools
+- `next_trains`: Get real-time arrivals with crowding indicators.
+- `find_station`: Search for stations using name or partial match.
+- `nearest_station`: Find closest stations using GPS coordinates.
+- `station_transfers`: List transfer options at specific stations.
 
-**Location-Based Searches:**
-- Nearest stations: `"stations near Times Square"` or `"near SoHo"`
-- GPS coordinates: `lat: 40.7589, lon: -73.9851`
-- AI automatically converts location names to coordinates
+#### System Tools
+- `service_status`: Check system-wide or line-specific status.
+- `subway_alerts`: Get detailed service alerts and disruptions.
+- `service_disruptions`: Analyze disruptions and alternative options.
 
-### What You Cannot Do (MTA Data Limitations)
+#### Accessibility Tools
+- `elevator_and_escalator_status`: Check current and upcoming equipment outages.
 
-**Complex Journey Planning:**
-- ❌ Multi-modal transit (bus + subway combinations)
-- ❌ Real-time traffic-aware routing
-- ❌ Ride-sharing integration
-- ✅ AI can chain tools for basic subway journey planning
+### Prompts
+- `check_train_arrivals`: Ask for next trains at a specified station.
+- `check_service_alerts`: Check for general or line-specific service alerts.
+- `check_elevator_status`: Check if elevators are working at a specific station.
 
-**Non-Subway Transit:**
-- ❌ Bus routes and schedules
-- ❌ LIRR, Metro-North, NJ Transit
-- ❌ Ferry, taxi, rideshare information
-- ✅ NYC Subway only (all lines: 1-7, A-Z, shuttles)
+### Resources
+- `subway_lines`: Reference data for all subway lines including colors and IDs.
+- `major_stations`: List of major transfer hubs and connection points.
 
-**Historical/Future Data:**
-- ❌ Past service performance
-- ❌ Schedules beyond ~2 hours
-- ❌ Planned service changes (beyond current alerts)
-- ✅ Real-time data only (current conditions)
+## Example Usage
 
-## Tools
-
-### Core Tools
-- **`next_trains`** - Real-time arrivals with crowding indicators
-- **`find_station`** - Fuzzy station search with accessibility info
-- **`nearest_station`** - Find closest stations (AI converts location names to coordinates)
-- **`station_transfers`** - Transfer options at stations
-
-### System Tools
-- **`service_status`** - System-wide or line-specific status
-- **`subway_alerts`** - Detailed service alerts with filtering
-- **`service_disruptions`** - Disruption analysis with alternatives
-
-
-### Example Queries
-
+### JavaScript / TypeScript
 ```javascript
-// Core functionality
-next_trains("Union Square", "N")  // N trains at Union Square
-find_station("herald", true)      // Herald stations with accessibility
-nearest_station({lat: 40.7589, lon: -73.9851})  // GPS coordinates
-station_transfers("Atlantic Ave") // Transfer options
-service_status("Q")              // Q line status
+// Check next trains
+await client.callTool("next_trains", { station: "Union Square", line: "N" });
 
-// AI Enhanced Queries
-"stations near Times Square"      // AI converts location → coordinates
-"how to get from SoHo to Brooklyn" // AI chains multiple tools
-"any service alerts for my commute?" // AI contextual understanding
+// Find accessible stations
+await client.callTool("find_station", { query: "herald", include_accessibility: true });
+
+// Check elevator status
+await client.callTool("elevator_and_escalator_status", { station: "DeKalb Ave", equipment_type: "elevator" });
 ```
 
-## MTA Compliance & Usage Terms
+### Natural Language Queries
+- "Where is the Q train at DeKalb Av?"
+- "Are there any service alerts for my commute?"
+- "Stations near Times Square"
+- "Are the elevators working at Union Square?"
 
-**Personal Use Only** - This server is designed for individual, non-commercial use.
+## Data Sources
 
-**Key Requirements:**
-- ✅ **Personal development** - Direct MTA feed access permitted
-- ❌ **Public distribution** - Requires data caching server and MTA license
-- 📋 **Attribution required** - "Data from MTA" in outputs
-- 🚫 **No redistribution** of raw feed data
-
-**Data Disclaimers:**
-- Data provided "as is" without accuracy guarantees
-- May be delayed or incomplete due to processing
-- Not affiliated with or endorsed by MTA
-
-For production/public use, you must implement proper data caching infrastructure and obtain MTA licensing.
+- **Real-time feeds**: All NYC subway lines via MTA GTFS-RT.
+- **Static data**: Stations, routes, transfers (auto-downloaded).
+- **Service alerts**: Live disruption and delay information.
+- **Equipment data**: Official MTA JSON feed for elevators and escalators.
+- **Update frequency**: Every 30 seconds for real-time data.
 
 ## Deployment
 
-### Smithery (Recommended)
+### Smithery
 ```bash
 npx @smithery/cli deploy
 ```
 
 ### Traditional MCP
-Use `npm start` for stdio protocol with any MCP client.
+Use `npm start` for stdio protocol integration with any MCP client.
 
-## Data Sources
+## MTA Compliance & Usage Terms
 
-- **Real-time feeds**: All NYC subway lines via MTA GTFS-RT
-- **Static data**: Stations, routes, transfers (auto-downloaded)
-- **Service alerts**: Live disruption and delay information
-- **Update frequency**: Every 30 seconds (real-time data)
+This server is designed for individual, non-commercial use.
+
+- **Personal use only**: Direct MTA feed access is permitted for personal development.
+- **Attribution required**: "Data from MTA" must be included in outputs.
+- **No redistribution**: Raw feed data cannot be redistributed.
+- **Public distribution**: Requires a dedicated data caching server and MTA license.
+
+**Data Disclaimers:**
+- Data is provided "as is" without accuracy guarantees.
+- Service may be subject to processing delays.
+- This project is not affiliated with or endorsed by the MTA.
 
 ## License
 
-MIT License - see LICENSE file for details
+MIT License - see LICENSE file for details.

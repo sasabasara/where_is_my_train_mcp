@@ -216,3 +216,25 @@ export interface GTFSSourceInfo {
     supplemented: CacheStatus;
   };
 }
+
+export interface EquipmentOutage {
+  station: string;
+  borough: string;
+  trainno: string;
+  equipment: string;
+  equipmenttype: 'EL' | 'ES';
+  serving: string;
+  ADA: 'Y' | 'N';
+  outagedate: string;
+  estimatedreturntoservice: string;
+  reason: string;
+  isupcomingoutage: 'Y' | 'N';
+  ismaintenanceoutage: 'Y' | 'N';
+}
+
+export interface ElevatorEscalatorStatusArgs {
+  station?: string;
+  equipment_type?: 'elevator' | 'escalator' | 'all';
+  ada_only?: boolean;
+  outage_type?: 'current' | 'upcoming' | 'all';
+}

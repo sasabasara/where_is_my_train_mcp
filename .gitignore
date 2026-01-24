@@ -63,11 +63,10 @@ Thumbs.db
 *.tmp
 *.temp
 
-# GTFS cache data (auto-generated; do not commit)
 # These directories contain downloaded and cached MTA data
 # Server automatically downloads and manages this data
 cache/
 
-# Legacy GTFS directories (if they exist)
-gtfs_subway/
-gtfs_supplemented/
+# Internal development docs
+.dev_docs/
+
