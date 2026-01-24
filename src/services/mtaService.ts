@@ -24,44 +24,53 @@ const initializeGTFS = (): Promise<protobuf.Root> => {
 // Initialize the promise on module load
 gtfsRootPromise = initializeGTFS();
 
+// Simple in-memory cache
+let cachedData: any = null;
+let lastFetchTime = 0;
+const CACHE_DURATION_MS = 30000; // 30 seconds
+
+export function getCachedData() {
+  return cachedData;
+}
+
 async function fetchSingleFeed(url: string) {
   const root = await gtfsRootPromise;
   const FeedMessage = root.lookupType("transit_realtime.FeedMessage");
-  
+
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 10000);
-  
+
   try {
-    const res = await fetch(url, { 
+    const res = await fetch(url, {
       signal: controller.signal,
       headers: {
         'User-Agent': 'whereismytrain-mcp/1.0'
       }
     });
-    
+
     clearTimeout(timeoutId);
-    
+
     if (!res.ok) {
       throw new Error(`HTTP ${res.status}: ${res.statusText}`);
     }
-    
+
     const buffer = Buffer.from(await res.arrayBuffer());
-    
+
     if (buffer.length === 0) {
       throw new Error('Empty response from feed');
     }
-    
+
     const message = FeedMessage.decode(buffer);
-    const decoded = FeedMessage.toObject(message, { 
-      longs: String, 
-      enums: String, 
-      bytes: String 
+    const decoded = FeedMessage.toObject(message, {
+      longs: String,
+      enums: String,
+      bytes: String
     });
-    
+
     if (!decoded || !Array.isArray(decoded.entity)) {
       throw new Error('Invalid feed structure');
     }
-    
+
     return decoded;
   } catch (error: any) {
     clearTimeout(timeoutId);
@@ -72,14 +81,19 @@ async function fetchSingleFeed(url: string) {
   }
 }
 
-export async function fetchMTAData() {
+export async function fetchMTAData(forceRefresh = false) {
+  // Return cached data if valid and not forcing refresh
+  if (!forceRefresh && cachedData && (Date.now() - lastFetchTime < CACHE_DURATION_MS)) {
+    return cachedData;
+  }
+
   const feedKeys = Object.keys(MTA_FEEDS);
   const feedUrls = Object.values(MTA_FEEDS);
-  
+
   const allFeeds = await Promise.allSettled(
     feedUrls.map(url => fetchSingleFeed(url))
   );
-  
+
   const combinedData = {
     entity: [] as any[],
     header: null as any,
@@ -89,7 +103,7 @@ export async function fetchMTAData() {
       failedFeeds: [] as string[]
     }
   };
-  
+
   allFeeds.forEach((result, index) => {
     const feedName = feedKeys[index];
     if (result.status === 'fulfilled') {
@@ -107,11 +121,13 @@ export async function fetchMTAData() {
       console.error(`Failed to fetch feed ${feedName}`);
     }
   });
-  
-  if (combinedData.feedStatus.failed > 0) {
-    console.warn(`⚠️  ${combinedData.feedStatus.failed}/${feedKeys.length} feeds failed: ${combinedData.feedStatus.failedFeeds.join(', ')}`);
-  }
-  
+
+
+
+  // Update cache
+  cachedData = combinedData;
+  lastFetchTime = Date.now();
+
   return combinedData;
 }
 

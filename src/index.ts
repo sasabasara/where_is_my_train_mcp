@@ -35,7 +35,7 @@ function wrapHandlerResult(result: ToolResponse): { content: Array<{ type: "text
 // Note: Environment validation removed - using Smithery config for API keys
 // GTFS loading is handled by individual services as needed
 
-export default function () {
+export function createMcpServer() {
   // GTFS data will be loaded lazily when first tool is called
 
   const server = new McpServer({

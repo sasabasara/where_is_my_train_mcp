@@ -8,6 +8,7 @@
   "scripts": {
     "start": "smithery dev",
     "dev": "smithery dev",
+    "start:railway": "node dist/src/server.js",
     "build": "tsc",
     "prepublishOnly": "npm run build",
     "test": "echo 'Use npm run dev for Smithery development'"
@@ -37,10 +38,12 @@
     "node-fetch": "^3.3.2",
     "node-stream-zip": "^1.15.0",
     "protobufjs": "^7.5.4",
-    "zod": "^3.25.76"
+    "zod": "^3.25.76",
+    "express": "^4.21.2"
   },
   "devDependencies": {
     "@types/node": "^22.17.2",
+    "@types/express": "^4.17.21",
     "tsx": "^4.20.4",
     "typescript": "^5.9.3"
   },
