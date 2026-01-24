@@ -2,6 +2,7 @@ import express from "express";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { createMcpServer } from "./index.js";
 import { startPolling } from "./services/pollingService.js";
+import { ensureStationLineDataLoaded } from "./services/gtfsLineResolver.js";
 import { randomUUID } from "crypto";
 
 const app = express();
@@ -50,7 +51,23 @@ app.post("/messages", async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, () => {
-    console.log(`MCP Server running on port ${PORT}`);
-    startPolling(); // Start the background polling
+// Initialize server with GTFS data
+async function startServer() {
+    console.log('[Server] Initializing MTA MCP Server...');
+
+    // Load station→lines mapping (parses stop_times.txt once)
+    console.log('[Server] Loading GTFS station→lines data...');
+    await ensureStationLineDataLoaded();
+
+    // Start Express server
+    app.listen(PORT, () => {
+        console.log(`[Server] MTA MCP Server running on port ${PORT}`);
+        console.log(`[Server] Starting background polling...`);
+        startPolling(); // Start the background polling
+    });
+}
+
+startServer().catch(error => {
+    console.error('[ERROR] Failed to start server:', error);
+    process.exit(1);
 });

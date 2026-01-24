@@ -32,7 +32,9 @@ export class GTFSManager {
   private static readonly REQUIRED_FILES = [
     'stops.txt',
     'transfers.txt',
-    'routes.txt'
+    'routes.txt',
+    'trips.txt',
+    'stop_times.txt'
   ];
 
   public static async getGTFSData(type: 'regular' | 'supplemented'): Promise<{

@@ -1,4 +1,5 @@
 import { fetchMTAData } from './mtaService.js';
+import { getLinesByStationName, ensureStationLineDataLoaded } from './gtfsLineResolver.js';
 
 export interface StationLineInfo {
   stationName: string;
@@ -47,9 +48,9 @@ export class DynamicLineService {
       
     } catch (error) {
       console.warn(`Failed to get dynamic lines for ${stationName}:`, error);
-      
-      // Final fallback to static data
-      return this.getStaticLinesForStation(stationName);
+
+      // Final fallback to GTFS-derived data
+      return await this.getFallbackLinesForStation(stationName);
     }
   }
   
@@ -136,25 +137,40 @@ export class DynamicLineService {
   }
   
   /**
-   * Fallback to static line data when real-time fails
+   * Fallback to GTFS-derived line data when real-time fails
+   * Uses accurate data from stop_times.txt for all 472 NYC stations
    */
-  private static getStaticLinesForStation(stationName: string): string[] {
-    const staticMappings = new Map([
-      ['times sq-42 st', ['1','2','3','7','N','Q','R','W','S']],
-      ['42 st-port authority bus terminal', ['A','C','E']],
-      ['14 st-union sq', ['4','5','6','L','N','Q','R','W']],
-      ['grand central-42 st', ['4','5','6','7','S']],
-      ['34 st-penn station', ['1','2','3','A','C','E']],
-    ]);
-    
-    const normalized = stationName.toLowerCase();
-    for (const [station, lines] of staticMappings) {
-      if (normalized.includes(station) || station.includes(normalized)) {
-        return lines;
+  private static async getFallbackLinesForStation(stationName: string): Promise<string[]> {
+    try {
+      // Ensure GTFS line resolver is initialized
+      await ensureStationLineDataLoaded();
+
+      // Get lines from GTFS-derived mapping
+      const gtfsLines = getLinesByStationName(stationName);
+
+      if (gtfsLines.length > 0) {
+        return gtfsLines;
       }
+
+      // Minimal override map for exceptional cases only
+      // (Only use if GTFS data is known to be incomplete for specific stations)
+      const overrides = new Map<string, string[]>([
+        // Currently empty - GTFS data should be complete
+        // Add entries only if specific stations have known data issues
+      ]);
+
+      const normalized = stationName.toLowerCase();
+      for (const [station, lines] of overrides) {
+        if (normalized.includes(station) || station.includes(normalized)) {
+          return lines;
+        }
+      }
+
+      return [];
+    } catch (error) {
+      console.error('Failed to get fallback lines:', error);
+      return [];
     }
-    
-    return [];
   }
   
 }

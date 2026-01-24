@@ -34,9 +34,12 @@ function wrapHandlerResult(result: ToolResponse): { content: Array<{ type: "text
 
 // Note: Environment validation removed - using Smithery config for API keys
 // GTFS loading is handled by individual services as needed
+// For Railway deployment: GTFS station→lines data is loaded at server startup (see server.ts)
+// For stdio mode: Data loads lazily on first tool call
 
 export function createMcpServer() {
-  // GTFS data will be loaded lazily when first tool is called
+  // GTFS data will be loaded lazily when first tool is called (stdio mode)
+  // Railway server preloads this data at startup for better performance
 
   const server = new McpServer({
     name: 'whereismytrain',
