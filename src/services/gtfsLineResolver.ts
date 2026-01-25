@@ -234,6 +234,7 @@ export function getStationLineCacheStatus() {
 }
 
 export async function rebuildStationLineCache(): Promise<void> {
+  console.log('[GTFS Resolver] Forcing rebuild of station-lines cache...');
   isInitialized = false;
   await ensureStationLineDataLoaded();
 }

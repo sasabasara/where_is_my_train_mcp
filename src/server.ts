@@ -53,7 +53,7 @@ const PORT = process.env.PORT || 3000;
 
 // Start Express server immediately to satisfy Railway's health checks
 app.listen(PORT, () => {
-    console.log(`✅ MTA MCP Server running on port ${PORT}`);
+    console.log(`[Server] MTA MCP Server running on port ${PORT}`);
 
     // Background tasks
     console.log('[Server] Starting background initialization...');
@@ -63,8 +63,8 @@ app.listen(PORT, () => {
 
     // 2. Load station→lines mapping (heavy task, runs in background)
     ensureStationLineDataLoaded().then(() => {
-        console.log('📊 GTFS station→lines data loaded successfully.');
+        console.log('[Server] GTFS station-lines data loaded successfully.');
     }).catch(err => {
-        console.error('❌ Failed to load GTFS data:', err);
+        console.error('[Server] Failed to load GTFS data:', err);
     });
 });
