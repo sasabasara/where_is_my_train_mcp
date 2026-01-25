@@ -135,6 +135,16 @@ export interface MTAFeedData {
   };
 }
 
+export interface StandardResponse<T = any> {
+  status: "success" | "error";
+  data: T;
+  message: string;
+  metadata?: {
+    timestamp: number;
+    source?: string;
+  };
+}
+
 export interface ToolResponse {
   content: Array<{
     type: "text";

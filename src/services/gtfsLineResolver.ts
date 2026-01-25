@@ -1,6 +1,7 @@
-import fs from 'fs/promises';
+import fs from 'fs';
+import fsPromises from 'fs/promises';
 import path from 'path';
-import { parseCSV } from '../utils/csvParser.js';
+import readline from 'readline';
 import { ensureDataLoaded, getStopsData } from './stationService.js';
 
 interface StationLineCache {
@@ -18,8 +19,6 @@ let isInitialized = false;
 
 /**
  * Ensure station→lines mapping is loaded
- * Called once at server startup or first API request
- * Shared across all MCP clients connected to Railway server
  */
 export async function ensureStationLineDataLoaded(): Promise<void> {
   if (isInitialized) {
@@ -43,7 +42,7 @@ export async function ensureStationLineDataLoaded(): Promise<void> {
     }
 
     // Cache miss or stale - parse from scratch
-    console.log('[GTFS Resolver] Parsing stop_times.txt (this may take 10-30 seconds)...');
+    console.log('[GTFS Resolver] Parsing GTFS files (using streaming to save memory)...');
     await buildStationLinesMap();
     await saveToCache();
 
@@ -58,83 +57,36 @@ export async function ensureStationLineDataLoaded(): Promise<void> {
   }
 }
 
-/**
- * Get lines serving a specific stop_id
- * O(1) lookup from in-memory Map
- */
 export function getLinesByStopId(stopId: string): string[] {
-  if (!stationLinesMap) {
-    console.warn('[WARN]  Station lines not initialized, returning empty array');
-    return [];
-  }
-
-  // Try exact match first
-  const lines = stationLinesMap.get(stopId);
-  if (lines && lines.length > 0) {
-    return [...lines]; // Return copy to prevent mutation
-  }
-
-  // Try parent station (remove direction suffix N/S)
-  const parentId = stopId.replace(/[NS]$/, '');
-  if (parentId !== stopId) {
-    const parentLines = stationLinesMap.get(parentId);
-    if (parentLines && parentLines.length > 0) {
-      return [...parentLines];
-    }
-  }
-
-  return [];
+  if (!stationLinesMap) return [];
+  const lines = stationLinesMap.get(stopId) || stationLinesMap.get(stopId.replace(/[NS]$/, ''));
+  return lines ? [...lines] : [];
 }
 
-/**
- * Get lines serving a station by name
- * Handles multiple stops with same name (e.g., all "23 St" stations)
- * Aggregates lines from all matching stops
- */
 export function getLinesByStationName(stationName: string): string[] {
-  if (!stationLinesMap) {
-    console.warn('[WARN]  Station lines not initialized, returning empty array');
-    return [];
-  }
-
+  if (!stationLinesMap) return [];
   const stops = getStopsData();
   const normalizedQuery = stationName.toLowerCase().trim();
 
-  // Find all stops matching this name
   const matchingStops = stops.filter(stop => {
     const normalizedStopName = stop.stop_name?.toLowerCase().trim();
-    return normalizedStopName === normalizedQuery ||
-           normalizedStopName?.includes(normalizedQuery);
+    return normalizedStopName === normalizedQuery || normalizedStopName?.includes(normalizedQuery);
   });
 
-  if (matchingStops.length === 0) {
-    return [];
-  }
+  if (matchingStops.length === 0) return [];
 
-  // Aggregate lines from all matching stops
   const allLines = new Set<string>();
-
   for (const stop of matchingStops) {
-    // Check this stop
-    const stopLines = getLinesByStopId(stop.stop_id);
-    stopLines.forEach(line => allLines.add(line));
-
-    // Also check parent station if exists
+    getLinesByStopId(stop.stop_id).forEach(line => allLines.add(line));
     if (stop.parent_station) {
-      const parentLines = getLinesByStopId(stop.parent_station);
-      parentLines.forEach(line => allLines.add(line));
+      getLinesByStopId(stop.parent_station).forEach(line => allLines.add(line));
     }
   }
 
   return Array.from(allLines).sort();
 }
 
-/**
- * Build the station→lines mapping by parsing stop_times.txt
- * This is the heavy operation that runs once at startup
- */
 async function buildStationLinesMap(): Promise<void> {
-  // Try supplemented first (more up-to-date), fallback to regular
   const sources = ['gtfs_supplemented', 'gtfs_regular'];
   let sourceUsed = '';
 
@@ -162,193 +114,110 @@ async function buildStationLinesMap(): Promise<void> {
 }
 
 /**
- * Try to build mapping from a specific GTFS source
+ * Stream-based CSV parser for large files
  */
+async function streamParseCSV(filePath: string, onRow: (row: any) => void): Promise<void> {
+  const fileStream = fs.createReadStream(filePath);
+  const rl = readline.createInterface({
+    input: fileStream,
+    crlfDelay: Infinity
+  });
+
+  let headers: string[] = [];
+  let isFirstLine = true;
+
+  for await (const line of rl) {
+    const parts = line.split(',').map(p => p.trim().replace(/^"(.*)"$/, '$1'));
+    if (isFirstLine) {
+      headers = parts;
+      isFirstLine = false;
+      continue;
+    }
+
+    const row: any = {};
+    headers.forEach((header, i) => {
+      row[header] = parts[i] || '';
+    });
+    onRow(row);
+  }
+}
+
 async function tryBuildFromSource(source: string): Promise<boolean> {
   const cacheDir = path.join(process.cwd(), `cache/${source}`);
   const stopTimesPath = path.join(cacheDir, 'stop_times.txt');
   const tripsPath = path.join(cacheDir, 'trips.txt');
 
-  // Check if files exist
   try {
-    await fs.access(stopTimesPath);
-    await fs.access(tripsPath);
+    await fsPromises.access(stopTimesPath);
+    await fsPromises.access(tripsPath);
   } catch {
-    console.log(`[INFO]  ${source} files not found, trying next source...`);
     return false;
   }
 
-  console.log(`[GTFS Resolver] Using ${source} for station→lines mapping`);
+  console.log(`[GTFS Resolver] Processing ${source}...`);
 
-  // Build trip_id → route_id mapping from trips.txt
-  console.log('  [GTFS Resolver] Parsing trips.txt...');
-  const tripToRoute = await buildTripToRouteMap(tripsPath);
-  console.log(`  [GTFS Resolver] Loaded ${tripToRoute.size} trip→route mappings`);
+  // 1. Build trip_id → route_id mapping (Streaming)
+  const tripToRoute = new Map<string, string>();
+  await streamParseCSV(tripsPath, (row) => {
+    if (row.trip_id && row.route_id) {
+      tripToRoute.set(row.trip_id, row.route_id);
+    }
+  });
+  console.log(`  [GTFS Resolver] Loaded ${tripToRoute.size} trips`);
 
-  // Parse stop_times.txt and aggregate
-  console.log('  [GTFS Resolver] Parsing stop_times.txt (this is the slow part)...');
-  const content = await fs.readFile(stopTimesPath, 'utf-8');
-  const rows = parseCSV(content);
-  console.log(`  [GTFS Resolver] Parsed ${rows.length} stop time entries`);
-
-  // Aggregate stop_id → lines
+  // 2. Build stop_id → routes mapping (Streaming)
   const mapping = new Map<string, Set<string>>();
-  let processedCount = 0;
-
-  for (const row of rows) {
+  await streamParseCSV(stopTimesPath, (row) => {
     const tripId = row.trip_id;
     const stopId = row.stop_id;
+    if (!tripId || !stopId) return;
 
-    if (!tripId || !stopId) continue;
-
-    // Get route from trip_id mapping
-    const routeId = tripToRoute.get(tripId);
-
-    if (!routeId) {
-      // Try to extract from trip_id as fallback
-      const extracted = extractRouteFromTripId(tripId);
-      if (extracted) {
-        if (!mapping.has(stopId)) {
-          mapping.set(stopId, new Set());
-        }
-        mapping.get(stopId)!.add(extracted);
-      }
-      continue;
+    const routeId = tripToRoute.get(tripId) || extractRouteFromTripId(tripId);
+    if (routeId) {
+      if (!mapping.has(stopId)) mapping.set(stopId, new Set());
+      mapping.get(stopId)!.add(routeId);
     }
+  });
 
-    // Add to mapping
-    if (!mapping.has(stopId)) {
-      mapping.set(stopId, new Set());
-    }
-    mapping.get(stopId)!.add(routeId);
-
-    processedCount++;
-  }
-
-  console.log(`  [GTFS Resolver] Processed ${processedCount} valid stop→line associations`);
-
-  // Convert Sets to sorted arrays
+  // Convert to final structure
   stationLinesMap = new Map();
   for (const [stopId, lines] of mapping) {
     stationLinesMap.set(stopId, Array.from(lines).sort());
   }
 
-  console.log(`  [GTFS Resolver] Built mapping for ${stationLinesMap.size} unique stops`);
-
   return true;
 }
 
-/**
- * Build trip_id → route_id mapping from trips.txt
- * This tells us which route each trip belongs to
- */
-async function buildTripToRouteMap(tripsPath: string): Promise<Map<string, string>> {
-  const mapping = new Map<string, string>();
-
-  try {
-    const content = await fs.readFile(tripsPath, 'utf-8');
-    const rows = parseCSV(content);
-
-    for (const row of rows) {
-      if (row.trip_id && row.route_id) {
-        mapping.set(row.trip_id, row.route_id);
-      }
-    }
-  } catch (error) {
-    console.warn('[WARN]  Could not parse trips.txt:', error);
-  }
-
-  return mapping;
-}
-
-/**
- * Extract route_id from trip_id (MTA naming convention)
- * Used as fallback when trips.txt mapping fails
- * Example: "AFA23GEN-1037-Sunday-00_000200_1..S03R" → "1"
- */
 function extractRouteFromTripId(tripId: string): string | null {
-  if (!tripId) return null;
-
-  // MTA trip_id format often contains route info
-  // Pattern 1: ..._<route>..
-  const match1 = tripId.match(/_([A-Z0-9]+)\.\./);
-  if (match1 && match1[1]) {
-    const route = match1[1];
-    // Validate it looks like a route (1-2 chars/digits)
-    if (/^[A-Z0-9]{1,2}$/.test(route)) {
-      return route;
-    }
-  }
-
-  // Pattern 2: Extract from parts
+  const match = tripId.match(/_([A-Z0-9]+)\.\./);
+  if (match && match[1] && match[1].length <= 2) return match[1];
   const parts = tripId.split('_');
   if (parts.length > 1) {
-    const routePart = parts[parts.length - 2];
-    if (routePart && /^[A-Z0-9]{1,2}$/.test(routePart)) {
-      return routePart;
-    }
+    const route = parts[parts.length - 2];
+    if (route && route.length <= 2) return route;
   }
-
   return null;
 }
 
-/**
- * Load station→lines mapping from disk cache
- * Returns true if cache is valid and loaded
- */
+// ... rest of the cache logic (loadFromCache, saveToCache) ...
+
 async function loadFromCache(): Promise<boolean> {
   const cacheFile = path.join(process.cwd(), 'cache/station_lines_cache.json');
-
   try {
-    const data = await fs.readFile(cacheFile, 'utf-8');
+    const data = await fsPromises.readFile(cacheFile, 'utf-8');
     const cache: StationLineCache = JSON.parse(data);
-
-    // Check if cache is stale (> 2 hours)
-    const age = Date.now() - cache.timestamp;
-    const maxAge = 2 * 60 * 60 * 1000; // 2 hours
-
-    if (age > maxAge) {
-      console.log(`[WARN]  Cache is ${Math.round(age / 1000 / 60)} minutes old, rebuilding...`);
-      return false;
-    }
-
-    // Check if cache has data
-    if (!cache.mappings || Object.keys(cache.mappings).length === 0) {
-      console.log('[WARN]  Cache is empty, rebuilding...');
-      return false;
-    }
-
-    // Load into memory
+    if (Date.now() - cache.timestamp > 2 * 60 * 60 * 1000) return false;
     stationLinesMap = new Map(Object.entries(cache.mappings));
-    cacheMetadata = {
-      version: cache.version,
-      timestamp: cache.timestamp,
-      source: cache.gtfsSource
-    };
-
-    console.log(`[INFO]  Cache age: ${Math.round(age / 1000 / 60)} minutes, ${cache.stationsCount} stations`);
-
+    cacheMetadata = { version: cache.version, timestamp: cache.timestamp, source: cache.gtfsSource };
     return true;
-  } catch (error) {
-    console.log('[INFO]  No valid cache found, will build from scratch');
-    return false;
-  }
+  } catch { return false; }
 }
 
-/**
- * Save station→lines mapping to disk cache
- * Enables fast server restarts
- */
 async function saveToCache(): Promise<void> {
-  if (!stationLinesMap || !cacheMetadata) {
-    console.warn('[WARN]  Cannot save cache: no data available');
-    return;
-  }
-
+  if (!stationLinesMap || !cacheMetadata) return;
   try {
     const cacheFile = path.join(process.cwd(), 'cache/station_lines_cache.json');
-    await fs.mkdir(path.dirname(cacheFile), { recursive: true });
-
+    await fsPromises.mkdir(path.dirname(cacheFile), { recursive: true });
     const cache: StationLineCache = {
       version: cacheMetadata.version,
       timestamp: cacheMetadata.timestamp,
@@ -356,35 +225,15 @@ async function saveToCache(): Promise<void> {
       stationsCount: stationLinesMap.size,
       mappings: Object.fromEntries(stationLinesMap)
     };
-
-    await fs.writeFile(cacheFile, JSON.stringify(cache, null, 2));
-    console.log('[GTFS Resolver] Saved station→lines cache to disk');
-  } catch (error) {
-    console.error('[ERROR] Failed to save cache:', error);
-    // Non-fatal - server can continue without cache
-  }
+    await fsPromises.writeFile(cacheFile, JSON.stringify(cache));
+  } catch (err) { console.error('Cache save failed:', err); }
 }
 
-/**
- * Get cache status for monitoring and debugging
- */
 export function getStationLineCacheStatus() {
-  return {
-    initialized: isInitialized,
-    stationsCount: stationLinesMap?.size || 0,
-    version: cacheMetadata?.version || null,
-    source: cacheMetadata?.source || null,
-    ageMinutes: cacheMetadata ? Math.round((Date.now() - cacheMetadata.timestamp) / 1000 / 60) : null
-  };
+  return { initialized: isInitialized, stationsCount: stationLinesMap?.size || 0 };
 }
 
-/**
- * Force rebuild of the cache (for debugging or manual refresh)
- */
 export async function rebuildStationLineCache(): Promise<void> {
-  console.log('🔄 Forcing rebuild of station→lines cache...');
-  stationLinesMap = null;
-  cacheMetadata = null;
   isInitialized = false;
   await ensureStationLineDataLoaded();
 }

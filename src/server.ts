@@ -32,7 +32,7 @@ app.get("/sse", async (req, res) => {
     await mcpServer.connect(transport);
 });
 
-app.post("/messages", async (req, res) => {
+app.post("/messages", express.json(), async (req, res) => {
     const sessionId = req.query.sessionId as string;
 
     if (!sessionId) {
@@ -51,23 +51,20 @@ app.post("/messages", async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 
-// Initialize server with GTFS data
-async function startServer() {
-    console.log('[Server] Initializing MTA MCP Server...');
+// Start Express server immediately to satisfy Railway's health checks
+app.listen(PORT, () => {
+    console.log(`✅ MTA MCP Server running on port ${PORT}`);
 
-    // Load station→lines mapping (parses stop_times.txt once)
-    console.log('[Server] Loading GTFS station→lines data...');
-    await ensureStationLineDataLoaded();
+    // Background tasks
+    console.log('[Server] Starting background initialization...');
 
-    // Start Express server
-    app.listen(PORT, () => {
-        console.log(`[Server] MTA MCP Server running on port ${PORT}`);
-        console.log(`[Server] Starting background polling...`);
-        startPolling(); // Start the background polling
+    // 1. Start background polling
+    startPolling();
+
+    // 2. Load station→lines mapping (heavy task, runs in background)
+    ensureStationLineDataLoaded().then(() => {
+        console.log('📊 GTFS station→lines data loaded successfully.');
+    }).catch(err => {
+        console.error('❌ Failed to load GTFS data:', err);
     });
-}
-
-startServer().catch(error => {
-    console.error('[ERROR] Failed to start server:', error);
-    process.exit(1);
 });

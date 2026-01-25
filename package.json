@@ -53,7 +53,7 @@
   "mcp": {
     "server": {
       "name": "nyc-subway",
-      "description": "Get real-time NYC subway information for NQRW lines",
+      "description": "Comprehensive NYC Subway assistant. USE GUIDELINES: 1. Use 'find_station' to map names to IDs. 2. Use 'next_trains' for real-time arrivals (data updates every 45s). 3. Use 'subway_alerts' for service delays and line-impact analysis. 4. Use 'nearest_station' for GPS-based discovery. 5. Follow up with 'station_transfers' for multi-leg trip planning.",
       "version": "1.0.0"
     }
   }
