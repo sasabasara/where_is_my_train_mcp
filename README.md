@@ -1,4 +1,6 @@
-# Where’s My Train? — MCP Server (NYC Subway)
+# Where's My Train? — MCP Server (NYC Subway)
+
+[![smithery badge](https://smithery.ai/badge/@sasabasara/where_is_my_train_mcp)](https://smithery.ai/server/@sasabasara/where_is_my_train_mcp)
 
 A Model Context Protocol (MCP) server for real-time NYC subway info: arrivals, station lookup, service alerts, accessibility status, and more — powered by live MTA feeds.
 
@@ -18,7 +20,7 @@ A Model Context Protocol (MCP) server for real-time NYC subway info: arrivals, s
 
 ### Option 1: Smithery (recommended)
 
-Visit the Smithery page and click **Install** to add it to your MCP client. No local setup required.
+Install via [Smithery](https://smithery.ai/server/@sasabasara/where_is_my_train_mcp) — click **Install** to add it to your MCP client. No local setup required.
 
 ### Option 2: Run locally
 
