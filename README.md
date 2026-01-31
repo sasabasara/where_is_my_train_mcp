@@ -4,7 +4,7 @@
 
 A Model Context Protocol (MCP) server for real-time NYC subway info: arrivals, station lookup, service alerts, accessibility status, and more — powered by live MTA feeds.
 
-> Data from the MTA • Personal use only • Not endorsed by the MTA • Provided “as is”
+> Data from the MTA • Personal use only • Not endorsed by the MTA • Provided "as is"
 
 ## What this gives you
 
@@ -12,7 +12,7 @@ A Model Context Protocol (MCP) server for real-time NYC subway info: arrivals, s
 - **Station search**: fuzzy name matching + optional accessibility info.
 - **Service alerts & disruptions**: system-wide or line-specific status and advisories.
 - **Elevator & escalator status**: live outage info for accessibility planning.
-- **Nearby station lookups (location-aware)**: find stations near a **lat/lon** (great for “near me” if your client provides GPS; also works for “near Times Square” when the model/client can resolve it to coordinates).
+- **Nearby station lookups (location-aware)**: find stations near a **lat/lon** (great for "near me" if your client provides GPS; also works for "near Times Square" when the model/client can resolve it to coordinates).
 - **Transfers**: basic transfer options at a station.
 - **Live MTA GTFS-RT**: coverage across subway lines.
 
