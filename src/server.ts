@@ -1,5 +1,7 @@
 import express from "express";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { createMcpServer } from "./index.js";
 import { startPolling } from "./services/pollingService.js";
 import { ensureStationLineDataLoaded } from "./services/gtfsLineResolver.js";
@@ -7,8 +9,20 @@ import { randomUUID } from "crypto";
 
 const app = express();
 
+// Parse JSON bodies for all routes
+app.use(express.json());
+
+// Request logging middleware - log ALL incoming requests
+app.use((req, res, next) => {
+    console.log(`[Request] ${req.method} ${req.url} - Headers: ${JSON.stringify(req.headers)}`);
+    next();
+});
+
 // Store transports by session ID for multi-client support
 const transports = new Map<string, SSEServerTransport>();
+
+// Store Streamable HTTP transports by session ID (for Smithery compatibility)
+const httpTransports: Record<string, StreamableHTTPServerTransport> = {};
 
 // Health check / root endpoint
 app.get("/", (req, res) => {
@@ -17,11 +31,108 @@ app.get("/", (req, res) => {
         name: "nyc-subway-mcp",
         version: "1.0.0",
         endpoints: {
+            mcp: "/mcp",
             sse: "/sse",
             messages: "/messages",
             serverCard: "/.well-known/mcp/server-card.json"
         }
     });
+});
+
+// OAuth callback endpoints (for Smithery auth flow)
+app.get("/oauth/callback", (req, res) => {
+    console.log("[OAuth] Callback received:", req.query);
+    res.json({ status: "ok", message: "OAuth callback received" });
+});
+
+app.get("/auth/callback", (req, res) => {
+    console.log("[Auth] Callback received:", req.query);
+    res.json({ status: "ok", message: "Auth callback received" });
+});
+
+app.get("/callback", (req, res) => {
+    console.log("[Callback] Received:", req.query);
+    res.json({ status: "ok", message: "Callback received" });
+});
+
+// Streamable HTTP transport endpoint for Smithery (POST /mcp)
+app.post("/mcp", async (req, res) => {
+    console.log("[MCP HTTP] POST request received");
+    const sessionId = req.headers["mcp-session-id"] as string | undefined;
+    let transport: StreamableHTTPServerTransport;
+
+    if (sessionId && httpTransports[sessionId]) {
+        // Reuse existing session
+        console.log(`[MCP HTTP] Reusing session: ${sessionId}`);
+        transport = httpTransports[sessionId];
+    } else if (!sessionId && isInitializeRequest(req.body)) {
+        // New session initialization
+        console.log("[MCP HTTP] Initializing new session");
+        transport = new StreamableHTTPServerTransport({
+            sessionIdGenerator: () => randomUUID(),
+            onsessioninitialized: (id) => {
+                httpTransports[id] = transport;
+                console.log(`[MCP HTTP] Session initialized: ${id}`);
+            }
+        });
+
+        transport.onclose = () => {
+            if (transport.sessionId) {
+                console.log(`[MCP HTTP] Session closed: ${transport.sessionId}`);
+                delete httpTransports[transport.sessionId];
+            }
+        };
+
+        // Create and connect MCP server for this session
+        const mcpServer = createMcpServer();
+        await mcpServer.connect(transport);
+    } else {
+        console.log("[MCP HTTP] Bad request - no session and not initialize request");
+        res.status(400).json({
+            jsonrpc: "2.0",
+            error: { code: -32000, message: "Bad Request: No valid session or initialize request" },
+            id: null
+        });
+        return;
+    }
+
+    await transport.handleRequest(req, res, req.body);
+});
+
+// Streamable HTTP transport endpoint for Smithery (GET /mcp for SSE notifications)
+app.get("/mcp", async (req, res) => {
+    console.log("[MCP HTTP] GET request received (SSE stream)");
+    const sessionId = req.headers["mcp-session-id"] as string;
+    const transport = httpTransports[sessionId];
+
+    if (transport) {
+        await transport.handleRequest(req, res);
+    } else {
+        console.log("[MCP HTTP] GET - Invalid session");
+        res.status(400).json({
+            jsonrpc: "2.0",
+            error: { code: -32000, message: "Invalid session" },
+            id: null
+        });
+    }
+});
+
+// Streamable HTTP transport endpoint for Smithery (DELETE /mcp for session termination)
+app.delete("/mcp", async (req, res) => {
+    console.log("[MCP HTTP] DELETE request received");
+    const sessionId = req.headers["mcp-session-id"] as string;
+    const transport = httpTransports[sessionId];
+
+    if (transport) {
+        await transport.handleRequest(req, res);
+    } else {
+        console.log("[MCP HTTP] DELETE - Invalid session");
+        res.status(400).json({
+            jsonrpc: "2.0",
+            error: { code: -32000, message: "Invalid session" },
+            id: null
+        });
+    }
 });
 
 // MCP Server Card endpoint for Smithery discovery
@@ -33,8 +144,8 @@ app.get("/.well-known/mcp/server-card.json", (req, res) => {
         homepage: "https://github.com/sasabasara/where_is_my_train_mcp",
         license: "MIT",
         transport: {
-            type: "sse",
-            endpoint: "/sse"
+            type: "http",
+            endpoint: "/mcp"
         },
         authentication: {
             required: false
@@ -124,7 +235,7 @@ app.get("/sse", async (req, res) => {
     await mcpServer.connect(transport);
 });
 
-app.post("/messages", express.json(), async (req, res) => {
+app.post("/messages", async (req, res) => {
     const sessionId = req.query.sessionId as string;
 
     if (!sessionId) {
