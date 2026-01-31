@@ -1,5 +1,4 @@
 import express from "express";
-import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { createMcpServer } from "./index.js";
@@ -12,11 +11,11 @@ const app = express();
 // Parse JSON bodies for all routes
 app.use(express.json());
 
-// CORS middleware for Smithery and other cross-origin clients
+// CORS middleware for cross-origin clients
 app.use((req, res, next) => {
     res.header("Access-Control-Allow-Origin", "*");
     res.header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-    res.header("Access-Control-Allow-Headers", "Content-Type, mcp-session-id");
+    res.header("Access-Control-Allow-Headers", "Content-Type, mcp-session-id, mcp-protocol-version");
     res.header("Access-Control-Expose-Headers", "mcp-session-id");
 
     if (req.method === "OPTIONS") {
@@ -26,16 +25,7 @@ app.use((req, res, next) => {
     next();
 });
 
-// Request logging middleware - log ALL incoming requests
-app.use((req, res, next) => {
-    console.log(`[Request] ${req.method} ${req.url} - Headers: ${JSON.stringify(req.headers)}`);
-    next();
-});
-
-// Store transports by session ID for multi-client support
-const transports = new Map<string, SSEServerTransport>();
-
-// Store Streamable HTTP transports by session ID (for Smithery compatibility)
+// Store Streamable HTTP transports by session ID
 const httpTransports: Record<string, StreamableHTTPServerTransport> = {};
 
 // Health check / root endpoint
@@ -46,63 +36,38 @@ app.get("/", (req, res) => {
         version: "1.0.0",
         endpoints: {
             mcp: "/mcp",
-            sse: "/sse",
-            messages: "/messages",
             serverCard: "/.well-known/mcp/server-card.json"
         }
     });
 });
 
-// OAuth callback endpoints (for Smithery auth flow)
-app.get("/oauth/callback", (req, res) => {
-    console.log("[OAuth] Callback received:", req.query);
-    res.json({ status: "ok", message: "OAuth callback received" });
-});
-
-app.get("/auth/callback", (req, res) => {
-    console.log("[Auth] Callback received:", req.query);
-    res.json({ status: "ok", message: "Auth callback received" });
-});
-
-app.get("/callback", (req, res) => {
-    console.log("[Callback] Received:", req.query);
-    res.json({ status: "ok", message: "Callback received" });
-});
-
-// Streamable HTTP transport endpoint for Smithery (POST /mcp)
+// Streamable HTTP transport (POST /mcp)
 app.post("/mcp", async (req, res) => {
-    console.log("[MCP HTTP] POST request received");
     const sessionId = req.headers["mcp-session-id"] as string | undefined;
     let transport: StreamableHTTPServerTransport;
 
     if (sessionId && httpTransports[sessionId]) {
-        // Reuse existing session
-        console.log(`[MCP HTTP] Reusing session: ${sessionId}`);
         transport = httpTransports[sessionId];
     } else if (!sessionId && isInitializeRequest(req.body)) {
-        // New session initialization
-        console.log("[MCP HTTP] Initializing new session");
         transport = new StreamableHTTPServerTransport({
             sessionIdGenerator: () => randomUUID(),
-            enableJsonResponse: true,  // Return JSON responses instead of SSE streams
+            enableJsonResponse: true,
             onsessioninitialized: (id) => {
                 httpTransports[id] = transport;
-                console.log(`[MCP HTTP] Session initialized: ${id}`);
+                console.log(`[MCP] Session initialized: ${id}`);
             }
         });
 
         transport.onclose = () => {
             if (transport.sessionId) {
-                console.log(`[MCP HTTP] Session closed: ${transport.sessionId}`);
+                console.log(`[MCP] Session closed: ${transport.sessionId}`);
                 delete httpTransports[transport.sessionId];
             }
         };
 
-        // Create and connect MCP server for this session
         const mcpServer = createMcpServer();
         await mcpServer.connect(transport);
     } else {
-        console.log("[MCP HTTP] Bad request - no session and not initialize request");
         res.status(400).json({
             jsonrpc: "2.0",
             error: { code: -32000, message: "Bad Request: No valid session or initialize request" },
@@ -114,16 +79,14 @@ app.post("/mcp", async (req, res) => {
     await transport.handleRequest(req, res, req.body);
 });
 
-// Streamable HTTP transport endpoint for Smithery (GET /mcp for SSE notifications)
+// Streamable HTTP transport (GET /mcp for SSE notifications)
 app.get("/mcp", async (req, res) => {
-    console.log("[MCP HTTP] GET request received (SSE stream)");
     const sessionId = req.headers["mcp-session-id"] as string;
     const transport = httpTransports[sessionId];
 
     if (transport) {
         await transport.handleRequest(req, res);
     } else {
-        console.log("[MCP HTTP] GET - Invalid session");
         res.status(400).json({
             jsonrpc: "2.0",
             error: { code: -32000, message: "Invalid session" },
@@ -132,16 +95,14 @@ app.get("/mcp", async (req, res) => {
     }
 });
 
-// Streamable HTTP transport endpoint for Smithery (DELETE /mcp for session termination)
+// Streamable HTTP transport (DELETE /mcp for session termination)
 app.delete("/mcp", async (req, res) => {
-    console.log("[MCP HTTP] DELETE request received");
     const sessionId = req.headers["mcp-session-id"] as string;
     const transport = httpTransports[sessionId];
 
     if (transport) {
         await transport.handleRequest(req, res);
     } else {
-        console.log("[MCP HTTP] DELETE - Invalid session");
         res.status(400).json({
             jsonrpc: "2.0",
             error: { code: -32000, message: "Invalid session" },
@@ -150,11 +111,11 @@ app.delete("/mcp", async (req, res) => {
     }
 });
 
-// MCP Server Card endpoint for Smithery discovery
+// MCP Server Card endpoint for discovery
 app.get("/.well-known/mcp/server-card.json", (req, res) => {
     res.json({
         name: "nyc-subway",
-        description: "Comprehensive NYC Subway assistant. USE GUIDELINES: 1. Use 'find_station' to map names to IDs. 2. Use 'next_trains' for real-time arrivals (data updates every 45s). 3. Use 'subway_alerts' for service delays and line-impact analysis. 4. Use 'nearest_station' for GPS-based discovery. 5. Follow up with 'station_transfers' for multi-leg trip planning.",
+        description: "NYC Subway MCP server providing real-time train arrivals, service alerts, and station information.",
         version: "1.0.0",
         homepage: "https://github.com/sasabasara/where_is_my_train_mcp",
         license: "MIT",
@@ -167,119 +128,27 @@ app.get("/.well-known/mcp/server-card.json", (req, res) => {
         },
         capabilities: {
             tools: [
-                {
-                    name: "find_station",
-                    description: "Advanced station search with fuzzy matching, accessibility info, and nearby amenities"
-                },
-                {
-                    name: "next_trains",
-                    description: "Real-time train arrivals with delay predictions, crowding levels, and service alerts"
-                },
-                {
-                    name: "service_status",
-                    description: "Comprehensive service status with performance metrics, on-time rates, and system-wide health indicators"
-                },
-                {
-                    name: "subway_alerts",
-                    description: "Detailed service alerts with impact analysis, affected stations, and estimated resolution times"
-                },
-                {
-                    name: "station_transfers",
-                    description: "Find all train line transfer options at a specific subway station"
-                },
-                {
-                    name: "nearest_station",
-                    description: "Find closest subway stations with walking directions, accessibility info, and real-time service status"
-                },
-                {
-                    name: "service_disruptions",
-                    description: "Get comprehensive service disruption information with impact analysis, alternative routes, and estimated resolution times"
-                },
-                {
-                    name: "elevator_and_escalator_status",
-                    description: "Get current and upcoming elevator and escalator outages at subway stations, including ADA accessibility impact"
-                }
-            ],
-            resources: [
-                {
-                    name: "subway_lines",
-                    description: "NYC Subway Lines Reference with colors and divisions"
-                },
-                {
-                    name: "major_stations",
-                    description: "Major NYC Subway Transfer Stations"
-                }
-            ],
-            prompts: [
-                {
-                    name: "check_train_arrivals",
-                    description: "Check next trains arriving at a station"
-                },
-                {
-                    name: "check_service_alerts",
-                    description: "Check service alerts for a specific line or all lines"
-                },
-                {
-                    name: "check_elevator_status",
-                    description: "Check elevator status at a station"
-                }
+                { name: "find_station", description: "Search for subway stations by name" },
+                { name: "next_trains", description: "Get real-time train arrivals" },
+                { name: "service_status", description: "Get service status for subway lines" },
+                { name: "subway_alerts", description: "Get service alerts and delays" },
+                { name: "station_transfers", description: "Find transfer options at a station" },
+                { name: "nearest_station", description: "Find closest subway stations" },
+                { name: "service_disruptions", description: "Get service disruption information" },
+                { name: "elevator_and_escalator_status", description: "Get elevator/escalator outage info" }
             ]
         }
     });
 });
 
-app.get("/sse", async (req, res) => {
-    const sessionId = req.query.sessionId as string || randomUUID();
-    console.log(`[SSE] New connection: ${sessionId}`);
-
-    // Create a new server instance for this session
-    const mcpServer = createMcpServer();
-
-    // Create transport for this session
-    const transport = new SSEServerTransport(`/messages?sessionId=${sessionId}`, res);
-
-    // Store it
-    transports.set(sessionId, transport);
-
-    // Clean up on close
-    res.on("close", () => {
-        console.log(`[SSE] Connection closed: ${sessionId}`);
-        transports.delete(sessionId);
-    });
-
-    await mcpServer.connect(transport);
-});
-
-app.post("/messages", async (req, res) => {
-    const sessionId = req.query.sessionId as string;
-
-    if (!sessionId) {
-        res.status(400).json({ error: "Missing sessionId parameter" });
-        return;
-    }
-
-    const transport = transports.get(sessionId);
-
-    if (transport) {
-        await transport.handlePostMessage(req, res);
-    } else {
-        res.status(404).json({ error: "No active SSE connection for this session" });
-    }
-});
-
 const PORT = process.env.PORT || 3000;
 
-// Start Express server immediately to satisfy Railway's health checks
 app.listen(PORT, () => {
-    console.log(`[Server] MTA MCP Server running on port ${PORT}`);
-
-    // Background tasks
+    console.log(`[Server] NYC Subway MCP Server running on port ${PORT}`);
     console.log('[Server] Starting background initialization...');
 
-    // 1. Start background polling
     startPolling();
 
-    // 2. Load station→lines mapping (heavy task, runs in background)
     ensureStationLineDataLoaded().then(() => {
         console.log('[Server] GTFS station-lines data loaded successfully.');
     }).catch(err => {
