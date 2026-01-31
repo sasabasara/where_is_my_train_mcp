@@ -29,6 +29,41 @@ function wrapHandlerResult(result: ToolResponse): { content: Array<{ type: "text
   };
 }
 
+// Tool logging helper
+function logToolCall(toolName: string, args: Record<string, unknown>): void {
+  const argsStr = Object.entries(args)
+    .filter(([_, v]) => v !== undefined)
+    .map(([k, v]) => `${k}: ${JSON.stringify(v)}`)
+    .join(", ");
+  console.log(`[Tool] ${toolName} called: { ${argsStr} }`);
+}
+
+function logToolResult(toolName: string, result: ToolResponse): void {
+  try {
+    const text = result.content[0]?.text;
+    if (!text) {
+      console.log(`[Tool] ${toolName} completed: empty response`);
+      return;
+    }
+    const parsed = JSON.parse(text);
+
+    // Generate a summary based on common response patterns
+    let summary = "";
+    if (parsed.stations) summary = `${parsed.stations.length} station(s)`;
+    else if (parsed.arrivals) summary = `${parsed.arrivals.length} arrival(s)`;
+    else if (parsed.alerts) summary = `${parsed.alerts.length} alert(s)`;
+    else if (parsed.disruptions) summary = `${parsed.disruptions.length} disruption(s)`;
+    else if (parsed.lines) summary = `${parsed.lines.length} line(s)`;
+    else if (parsed.outages) summary = `${parsed.outages.length} outage(s)`;
+    else if (parsed.errorType) summary = `error: ${parsed.errorType}`;
+    else summary = "ok";
+
+    console.log(`[Tool] ${toolName} completed: ${summary}`);
+  } catch {
+    console.log(`[Tool] ${toolName} completed`);
+  }
+}
+
 // Load environment variables (commented out - using Smithery config)
 // config();
 
@@ -175,11 +210,13 @@ export function createMcpServer() {
       }
     },
     async (args) => {
+      logToolCall("find_station", args);
       try {
         const result = await handleFindStation(args);
+        logToolResult("find_station", result);
         return wrapHandlerResult(result);
       } catch (error) {
-        console.error('Find Station tool error occurred');
+        console.error('[Tool] find_station error');
         return {
           content: [{ type: "text" as const, text: "Station search temporarily unavailable. Please try again later." }],
           isError: true
@@ -207,11 +244,13 @@ export function createMcpServer() {
       }
     },
     async (args) => {
+      logToolCall("next_trains", args);
       try {
         const result = await handleNextTrains(args);
+        logToolResult("next_trains", result);
         return wrapHandlerResult(result);
       } catch (error) {
-        console.error('Next Trains tool error occurred');
+        console.error('[Tool] next_trains error');
         return {
           content: [{ type: "text" as const, text: "Train arrival data temporarily unavailable. Please try again later." }],
           isError: true
@@ -238,11 +277,13 @@ export function createMcpServer() {
       }
     },
     async (args) => {
+      logToolCall("service_status", args);
       try {
         const result = await handleServiceStatus(args);
+        logToolResult("service_status", result);
         return wrapHandlerResult(result);
       } catch (error) {
-        console.error('Service Status tool error occurred');
+        console.error('[Tool] service_status error');
         return {
           content: [{ type: "text" as const, text: "Service status temporarily unavailable. Please try again later." }],
           isError: true
@@ -270,11 +311,13 @@ export function createMcpServer() {
       }
     },
     async (args) => {
+      logToolCall("subway_alerts", args);
       try {
         const result = await handleSubwayAlerts(args);
+        logToolResult("subway_alerts", result);
         return wrapHandlerResult(result);
       } catch (error) {
-        console.error('Subway Alerts tool error occurred');
+        console.error('[Tool] subway_alerts error');
         return {
           content: [{ type: "text" as const, text: "Subway alerts temporarily unavailable. Please try again later." }],
           isError: true
@@ -299,11 +342,13 @@ export function createMcpServer() {
       }
     },
     async (args) => {
+      logToolCall("station_transfers", args);
       try {
         const result = await handleStationTransfers(args);
+        logToolResult("station_transfers", result);
         return wrapHandlerResult(result);
       } catch (error) {
-        console.error('Station Transfers tool error occurred');
+        console.error('[Tool] station_transfers error');
         return {
           content: [{ type: "text" as const, text: "Station transfer data temporarily unavailable. Please try again later." }],
           isError: true
@@ -335,11 +380,13 @@ export function createMcpServer() {
       }
     },
     async (args) => {
+      logToolCall("nearest_station", args);
       try {
         const result = await handleNearestStation(args);
+        logToolResult("nearest_station", result);
         return wrapHandlerResult(result);
       } catch (error) {
-        console.error('Nearest Station tool error occurred');
+        console.error('[Tool] nearest_station error');
         return {
           content: [{ type: "text" as const, text: "Nearest station search temporarily unavailable. Please try again later." }],
           isError: true
@@ -367,11 +414,13 @@ export function createMcpServer() {
       }
     },
     async (args) => {
+      logToolCall("service_disruptions", args);
       try {
         const result = await handleServiceDisruptions(args);
+        logToolResult("service_disruptions", result);
         return wrapHandlerResult(result);
       } catch (error) {
-        console.error('Service Disruptions tool error occurred');
+        console.error('[Tool] service_disruptions error');
         return {
           content: [{ type: "text" as const, text: "Service disruption data temporarily unavailable. Please try again later." }],
           isError: true
@@ -399,11 +448,13 @@ export function createMcpServer() {
       }
     },
     async (args) => {
+      logToolCall("elevator_and_escalator_status", args);
       try {
         const result = await handleElevatorEscalatorStatus(args);
+        logToolResult("elevator_and_escalator_status", result);
         return wrapHandlerResult(result);
       } catch (error) {
-        console.error('Elevator and Escalator Status tool error occurred');
+        console.error('[Tool] elevator_and_escalator_status error');
         return {
           content: [{ type: "text" as const, text: "Elevator and escalator status temporarily unavailable. Please try again later." }],
           isError: true

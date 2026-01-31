@@ -25,6 +25,27 @@ app.use((req, res, next) => {
     next();
 });
 
+// Request logging middleware
+app.use((req, res, next) => {
+    const userAgent = req.headers["user-agent"] || "";
+    let clientType = "unknown";
+    if (userAgent.includes("curl")) clientType = "curl";
+    else if (userAgent.includes("node") || userAgent.includes("undici")) clientType = "mcp-remote";
+    else if (userAgent.includes("Mozilla")) clientType = "browser";
+
+    const sessionId = req.headers["mcp-session-id"] as string | undefined;
+    const sessionInfo = sessionId ? ` session:${sessionId.slice(0, 8)}` : "";
+
+    // Try to identify the MCP method from the request body
+    let methodInfo = "";
+    if (req.body && typeof req.body === "object" && req.body.method) {
+        methodInfo = ` - ${req.body.method}`;
+    }
+
+    console.log(`[Request] ${req.method} ${req.path} (${clientType})${sessionInfo}${methodInfo}`);
+    next();
+});
+
 // Store Streamable HTTP transports by session ID
 const httpTransports: Record<string, StreamableHTTPServerTransport> = {};
 

@@ -69,6 +69,7 @@ cache/
 
 # Internal development docs
 .dev_docs/
+CLAUDE.md
 
 # Local-only to-do list
 TODO_LOCAL.md
