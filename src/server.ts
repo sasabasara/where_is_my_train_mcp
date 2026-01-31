@@ -10,6 +10,77 @@ const app = express();
 // Store transports by session ID for multi-client support
 const transports = new Map<string, SSEServerTransport>();
 
+// MCP Server Card endpoint for Smithery discovery
+app.get("/.well-known/mcp/server-card.json", (req, res) => {
+    res.json({
+        name: "nyc-subway",
+        description: "Comprehensive NYC Subway assistant. USE GUIDELINES: 1. Use 'find_station' to map names to IDs. 2. Use 'next_trains' for real-time arrivals (data updates every 45s). 3. Use 'subway_alerts' for service delays and line-impact analysis. 4. Use 'nearest_station' for GPS-based discovery. 5. Follow up with 'station_transfers' for multi-leg trip planning.",
+        version: "1.0.0",
+        homepage: "https://github.com/sasabasara/where_is_my_train_mcp",
+        license: "MIT",
+        capabilities: {
+            tools: [
+                {
+                    name: "find_station",
+                    description: "Advanced station search with fuzzy matching, accessibility info, and nearby amenities"
+                },
+                {
+                    name: "next_trains",
+                    description: "Real-time train arrivals with delay predictions, crowding levels, and service alerts"
+                },
+                {
+                    name: "service_status",
+                    description: "Comprehensive service status with performance metrics, on-time rates, and system-wide health indicators"
+                },
+                {
+                    name: "subway_alerts",
+                    description: "Detailed service alerts with impact analysis, affected stations, and estimated resolution times"
+                },
+                {
+                    name: "station_transfers",
+                    description: "Find all train line transfer options at a specific subway station"
+                },
+                {
+                    name: "nearest_station",
+                    description: "Find closest subway stations with walking directions, accessibility info, and real-time service status"
+                },
+                {
+                    name: "service_disruptions",
+                    description: "Get comprehensive service disruption information with impact analysis, alternative routes, and estimated resolution times"
+                },
+                {
+                    name: "elevator_and_escalator_status",
+                    description: "Get current and upcoming elevator and escalator outages at subway stations, including ADA accessibility impact"
+                }
+            ],
+            resources: [
+                {
+                    name: "subway_lines",
+                    description: "NYC Subway Lines Reference with colors and divisions"
+                },
+                {
+                    name: "major_stations",
+                    description: "Major NYC Subway Transfer Stations"
+                }
+            ],
+            prompts: [
+                {
+                    name: "check_train_arrivals",
+                    description: "Check next trains arriving at a station"
+                },
+                {
+                    name: "check_service_alerts",
+                    description: "Check service alerts for a specific line or all lines"
+                },
+                {
+                    name: "check_elevator_status",
+                    description: "Check elevator status at a station"
+                }
+            ]
+        }
+    });
+});
+
 app.get("/sse", async (req, res) => {
     const sessionId = req.query.sessionId as string || randomUUID();
     console.log(`[SSE] New connection: ${sessionId}`);
