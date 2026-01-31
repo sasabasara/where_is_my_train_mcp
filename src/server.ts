@@ -32,7 +32,7 @@ const httpTransports: Record<string, StreamableHTTPServerTransport> = {};
 app.get("/", (req, res) => {
     res.json({
         status: "ok",
-        name: "nyc-subway-mcp",
+        name: "where-is-my-train-mta",
         version: "1.0.0",
         endpoints: {
             mcp: "/mcp",
@@ -114,7 +114,7 @@ app.delete("/mcp", async (req, res) => {
 // MCP Server Card endpoint for discovery
 app.get("/.well-known/mcp/server-card.json", (req, res) => {
     res.json({
-        name: "nyc-subway",
+        name: "where-is-my-train-mta",
         description: "NYC Subway MCP server providing real-time train arrivals, service alerts, and station information.",
         version: "1.0.0",
         homepage: "https://github.com/sasabasara/where_is_my_train_mcp",

@@ -42,7 +42,7 @@ export function createMcpServer() {
   // Railway server preloads this data at startup for better performance
 
   const server = new McpServer({
-    name: 'whereismytrain',
+    name: 'where-is-my-train-mta',
     version: '1.0.0'
   });
 
