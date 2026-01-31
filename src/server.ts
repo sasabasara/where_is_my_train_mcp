@@ -10,6 +10,20 @@ const app = express();
 // Store transports by session ID for multi-client support
 const transports = new Map<string, SSEServerTransport>();
 
+// Health check / root endpoint
+app.get("/", (req, res) => {
+    res.json({
+        status: "ok",
+        name: "nyc-subway-mcp",
+        version: "1.0.0",
+        endpoints: {
+            sse: "/sse",
+            messages: "/messages",
+            serverCard: "/.well-known/mcp/server-card.json"
+        }
+    });
+});
+
 // MCP Server Card endpoint for Smithery discovery
 app.get("/.well-known/mcp/server-card.json", (req, res) => {
     res.json({
@@ -18,6 +32,13 @@ app.get("/.well-known/mcp/server-card.json", (req, res) => {
         version: "1.0.0",
         homepage: "https://github.com/sasabasara/where_is_my_train_mcp",
         license: "MIT",
+        transport: {
+            type: "sse",
+            endpoint: "/sse"
+        },
+        authentication: {
+            required: false
+        },
         capabilities: {
             tools: [
                 {
