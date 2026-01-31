@@ -70,12 +70,18 @@ app.post("/mcp", async (req, res) => {
     if (sessionId && httpTransports[sessionId]) {
         transport = httpTransports[sessionId];
     } else if (!sessionId && isInitializeRequest(req.body)) {
+        // Extract client info from initialize request
+        const clientInfo = req.body.params?.clientInfo;
+        const clientName = clientInfo?.name || "unknown";
+        const clientVersion = clientInfo?.version || "";
+        const clientStr = clientVersion ? `${clientName} ${clientVersion}` : clientName;
+
         transport = new StreamableHTTPServerTransport({
             sessionIdGenerator: () => randomUUID(),
             enableJsonResponse: true,
             onsessioninitialized: (id) => {
                 httpTransports[id] = transport;
-                console.log(`[MCP] Session initialized: ${id}`);
+                console.log(`[MCP] Session initialized: ${id} (client: ${clientStr})`);
             }
         });
 
