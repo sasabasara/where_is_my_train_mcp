@@ -12,6 +12,20 @@ const app = express();
 // Parse JSON bodies for all routes
 app.use(express.json());
 
+// CORS middleware for Smithery and other cross-origin clients
+app.use((req, res, next) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Content-Type, mcp-session-id");
+    res.header("Access-Control-Expose-Headers", "mcp-session-id");
+
+    if (req.method === "OPTIONS") {
+        res.sendStatus(200);
+        return;
+    }
+    next();
+});
+
 // Request logging middleware - log ALL incoming requests
 app.use((req, res, next) => {
     console.log(`[Request] ${req.method} ${req.url} - Headers: ${JSON.stringify(req.headers)}`);
@@ -70,6 +84,7 @@ app.post("/mcp", async (req, res) => {
         console.log("[MCP HTTP] Initializing new session");
         transport = new StreamableHTTPServerTransport({
             sessionIdGenerator: () => randomUUID(),
+            enableJsonResponse: true,  // Return JSON responses instead of SSE streams
             onsessioninitialized: (id) => {
                 httpTransports[id] = transport;
                 console.log(`[MCP HTTP] Session initialized: ${id}`);
