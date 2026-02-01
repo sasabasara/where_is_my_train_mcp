@@ -25,24 +25,62 @@ app.use((req, res, next) => {
     next();
 });
 
-// Request logging middleware
+// Detect client type from user agent
+function detectClientType(userAgent: string | undefined): string {
+    if (!userAgent) return "unknown";
+    if (userAgent.includes("curl")) return "curl";
+    if (userAgent.includes("Claude") || userAgent.includes("claude")) return "claude-desktop";
+    if (userAgent.includes("Smithery") || userAgent.includes("smithery")) return "smithery";
+    if (userAgent.includes("node") || userAgent.includes("undici")) return "mcp-client";
+    if (userAgent.includes("Mozilla")) return "browser";
+    return "unknown";
+}
+
+// Wide event logging middleware - one structured JSON per request
 app.use((req, res, next) => {
-    const userAgent = req.headers["user-agent"] || "";
-    let clientType = "unknown";
-    if (userAgent.includes("curl")) clientType = "curl";
-    else if (userAgent.includes("node") || userAgent.includes("undici")) clientType = "mcp-remote";
-    else if (userAgent.includes("Mozilla")) clientType = "browser";
+    const startTime = Date.now();
+    const requestId = randomUUID().slice(0, 8);
 
-    const sessionId = req.headers["mcp-session-id"] as string | undefined;
-    const sessionInfo = sessionId ? ` session:${sessionId.slice(0, 8)}` : "";
+    // Capture the original json method
+    const originalJson = res.json.bind(res);
 
-    // Try to identify the MCP method from the request body
-    let methodInfo = "";
-    if (req.body && typeof req.body === "object" && req.body.method) {
-        methodInfo = ` - ${req.body.method}`;
-    }
+    res.json = (body: any) => {
+        const sessionId = req.headers["mcp-session-id"] as string | undefined;
 
-    console.log(`[Request] ${req.method} ${req.path} (${clientType})${sessionInfo}${methodInfo}`);
+        const event = {
+            // Request identity
+            requestId,
+            timestamp: new Date().toISOString(),
+
+            // What happened
+            method: req.method,
+            path: req.path,
+            mcpMethod: req.body?.method || null,
+            mcpId: req.body?.id || null,
+            toolName: req.body?.params?.name || null,
+            toolArgs: req.body?.params?.arguments || null,
+
+            // Who
+            sessionId: sessionId?.slice(0, 8) || null,
+            clientType: detectClientType(req.headers["user-agent"] as string),
+
+            // Outcome
+            statusCode: res.statusCode,
+            success: res.statusCode < 400 && !body?.error,
+            errorCode: body?.error?.code || null,
+            errorMessage: body?.error?.message || null,
+
+            // Performance
+            durationMs: Date.now() - startTime,
+
+            // Server context
+            activeSessions: Object.keys(httpTransports).length
+        };
+
+        console.log(JSON.stringify(event));
+        return originalJson(body);
+    };
+
     next();
 });
 
@@ -81,13 +119,25 @@ app.post("/mcp", async (req, res) => {
             enableJsonResponse: true,
             onsessioninitialized: (id) => {
                 httpTransports[id] = transport;
-                console.log(`[MCP] Session initialized: ${id} (client: ${clientStr})`);
+                console.log(JSON.stringify({
+                    event: "session_start",
+                    timestamp: new Date().toISOString(),
+                    sessionId: id.slice(0, 8),
+                    clientName,
+                    clientVersion,
+                    activeSessions: Object.keys(httpTransports).length + 1
+                }));
             }
         });
 
         transport.onclose = () => {
             if (transport.sessionId) {
-                console.log(`[MCP] Session closed: ${transport.sessionId}`);
+                console.log(JSON.stringify({
+                    event: "session_end",
+                    timestamp: new Date().toISOString(),
+                    sessionId: transport.sessionId.slice(0, 8),
+                    activeSessions: Object.keys(httpTransports).length - 1
+                }));
                 delete httpTransports[transport.sessionId];
             }
         };
@@ -171,14 +221,27 @@ app.get("/.well-known/mcp/server-card.json", (req, res) => {
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-    console.log(`[Server] NYC Subway MCP Server running on port ${PORT}`);
-    console.log('[Server] Starting background initialization...');
+    console.log(JSON.stringify({
+        event: "server_start",
+        timestamp: new Date().toISOString(),
+        port: PORT,
+        version: "1.0.0"
+    }));
 
     startPolling();
 
     ensureStationLineDataLoaded().then(() => {
-        console.log('[Server] GTFS station-lines data loaded successfully.');
+        console.log(JSON.stringify({
+            event: "gtfs_loaded",
+            timestamp: new Date().toISOString(),
+            success: true
+        }));
     }).catch(err => {
-        console.error('[Server] Failed to load GTFS data:', err);
+        console.log(JSON.stringify({
+            event: "gtfs_loaded",
+            timestamp: new Date().toISOString(),
+            success: false,
+            error: err.message
+        }));
     });
 });
