@@ -18,24 +18,25 @@ A Model Context Protocol (MCP) server for real-time NYC subway info: arrivals, s
 
 ## Usage
 
-### Option 1: Smithery (recommended)
+### Option 1: Remote (recommended)
 
-Install via [Smithery](https://smithery.ai/server/@sasabasara/where_is_my_train_mcp) — click **Install** to add it to your MCP client. No local setup required.
+Connect your MCP client to the hosted server — no local setup required:
+
+```
+https://whereismytrainmcp-production.up.railway.app/mcp
+```
+
+Also available on [Smithery](https://smithery.ai/server/@sasabasara/where_is_my_train_mcp).
 
 ### Option 2: Run locally
 
 **Prereqs**
 - Node.js 18+
 
-**Quick start**
 ```bash
 git clone https://github.com/sasabasara/where_is_my_train_mcp.git
 cd where_is_my_train_mcp
 npm install
-
-# Start dev
-npm run dev
-
-# Or run the MCP server
+npm run build
 npm start
 ```
