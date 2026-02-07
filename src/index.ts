@@ -1,4 +1,3 @@
-// import { config } from 'dotenv'; // Removed - using Smithery config
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import {
@@ -11,8 +10,6 @@ import {
   handleServiceDisruptions,
   handleElevatorEscalatorStatus
 } from "./handlers/toolHandlers.js";
-import { loadStaticGTFS } from "./services/stationService.js";
-
 
 // Type-safe wrapper for handler results
 type HandlerResult = {
@@ -63,14 +60,6 @@ function logToolResult(toolName: string, result: ToolResponse): void {
     console.log(`[Tool] ${toolName} completed`);
   }
 }
-
-// Load environment variables (commented out - using Smithery config)
-// config();
-
-// Note: Environment validation removed - using Smithery config for API keys
-// GTFS loading is handled by individual services as needed
-// For Railway deployment: GTFS station→lines data is loaded at server startup (see server.ts)
-// For stdio mode: Data loads lazily on first tool call
 
 export function createMcpServer() {
   // GTFS data will be loaded lazily when first tool is called (stdio mode)

@@ -6,12 +6,12 @@
   "module": "./src/index.ts",
   "type": "module",
   "scripts": {
-    "start": "smithery dev",
-    "dev": "smithery dev",
+    "start": "node dist/src/server.js",
+    "dev": "tsx src/server.ts",
     "start:railway": "node dist/src/server.js",
     "build": "tsc",
     "prepublishOnly": "npm run build",
-    "test": "echo 'Use npm run dev for Smithery development'"
+    "test": "echo \"No tests yet\""
   },
   "keywords": [
     "mcp",

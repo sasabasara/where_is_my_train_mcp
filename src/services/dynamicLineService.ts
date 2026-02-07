@@ -1,7 +1,7 @@
 import { fetchMTAData } from './mtaService.js';
 import { getLinesByStationName, ensureStationLineDataLoaded } from './gtfsLineResolver.js';
 
-export interface StationLineInfo {
+interface StationLineInfo {
   stationName: string;
   activeLines: string[];
   lastUpdated: Date;

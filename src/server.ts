@@ -30,7 +30,6 @@ function detectClientType(userAgent: string | undefined): string {
     if (!userAgent) return "unknown";
     if (userAgent.includes("curl")) return "curl";
     if (userAgent.includes("Claude") || userAgent.includes("claude")) return "claude-desktop";
-    if (userAgent.includes("Smithery") || userAgent.includes("smithery")) return "smithery";
     if (userAgent.includes("node") || userAgent.includes("undici")) return "mcp-client";
     if (userAgent.includes("Mozilla")) return "browser";
     return "unknown";
@@ -164,9 +163,11 @@ app.get("/mcp", async (req, res) => {
     if (transport) {
         await transport.handleRequest(req, res);
     } else {
-        res.status(400).json({
+        // Return 405 Method Not Allowed per MCP spec when no valid session
+        // This tells clients SSE is supported but requires a session first
+        res.status(405).set("Allow", "POST, DELETE").json({
             jsonrpc: "2.0",
-            error: { code: -32000, message: "Invalid session" },
+            error: { code: -32600, message: "SSE stream requires valid session. Initialize first with POST." },
             id: null
         });
     }
@@ -190,18 +191,28 @@ app.delete("/mcp", async (req, res) => {
 
 // MCP Server Card endpoint for discovery
 app.get("/.well-known/mcp/server-card.json", (req, res) => {
+    const baseUrl = process.env.RAILWAY_PUBLIC_DOMAIN
+        ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+        : `http://localhost:${PORT}`;
+
     res.json({
         name: "where-is-my-train-mta",
         description: "NYC Subway MCP server providing real-time train arrivals, service alerts, and station information.",
         version: "1.0.0",
+        url: baseUrl,
         homepage: "https://github.com/sasabasara/where_is_my_train_mcp",
         license: "MIT",
         transport: {
-            type: "http",
-            endpoint: "/mcp"
+            type: "streamable-http",
+            endpoint: `${baseUrl}/mcp`
         },
         authentication: {
             required: false
+        },
+        configSchema: {
+            type: "object",
+            properties: {},
+            required: []
         },
         capabilities: {
             tools: [
@@ -213,6 +224,15 @@ app.get("/.well-known/mcp/server-card.json", (req, res) => {
                 { name: "nearest_station", description: "Find closest subway stations" },
                 { name: "service_disruptions", description: "Get service disruption information" },
                 { name: "elevator_and_escalator_status", description: "Get elevator/escalator outage info" }
+            ],
+            prompts: [
+                { name: "check_train_arrivals", description: "Check upcoming train arrivals at a station" },
+                { name: "check_service_alerts", description: "Check current service alerts" },
+                { name: "check_elevator_status", description: "Check elevator/escalator status" }
+            ],
+            resources: [
+                { uri: "subway://lines", name: "Subway Lines", description: "List of all subway lines" },
+                { uri: "subway://major-stations", name: "Major Stations", description: "List of major transfer stations" }
             ]
         }
     });

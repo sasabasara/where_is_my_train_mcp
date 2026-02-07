@@ -1,6 +1,6 @@
 import { fetchMTAData, fetchMTAAlerts, fetchEquipmentOutages } from "../services/mtaService.js";
-import { StationMatcher, getStopsData, getTransfersData, getGTFSSourceInfo, refreshGTFS, ensureDataLoaded } from "../services/stationService.js";
-import { calculateDistance, getTrainDestination, getCurrentLocation, getMTADisclaimer } from "../utils/index.js";
+import { StationMatcher, getStopsData, getTransfersData, getGTFSSourceInfo, ensureDataLoaded } from "../services/stationService.js";
+import { calculateDistance, getTrainDestination } from "../utils/index.js";
 import { ServiceDisruptionAnalyzer } from "../services/serviceDisruptions.js";
 import {
   StandardResponse,
@@ -56,15 +56,6 @@ export async function handleServiceDisruptions(args: ServiceDisruptionsArgs): Pr
     return createStandardResponse(analysis, `Service disruption analysis for ${args.line || 'system'}`);
   } catch (error) {
     return createStandardResponse(null, "Service disruption analysis temporarily unavailable.", true);
-  }
-}
-
-export async function handleGTFSStatus(args: Record<string, never>): Promise<ToolResponse> {
-  try {
-    const sourceInfo = await getGTFSSourceInfo();
-    return createStandardResponse(sourceInfo, "Current GTFS data synchronization status");
-  } catch (error) {
-    return createStandardResponse(null, "GTFS status temporarily unavailable.", true);
   }
 }
 

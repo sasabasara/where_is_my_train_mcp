@@ -127,12 +127,6 @@ export async function ensureDataLoaded() {
   }
 }
 
-// Keep the old function for backward compatibility
-export async function loadStaticGTFS() {
-  return ensureDataLoaded();
-}
-
-
 export function getStopsData(): any[] {
   return stopsData;
 }
@@ -141,33 +135,9 @@ export function getTransfersData(): any[] {
   return transfersData;
 }
 
-export function getRoutesData(): any[] {
-  return routesData;
-}
-
 export async function getGTFSSourceInfo(): Promise<{ source: string; status: any }> {
   return {
     source: currentGTFSSource,
     status: await GTFSManager.getCacheStatus()
   };
-}
-
-export async function refreshGTFS(type?: 'regular' | 'supplemented'): Promise<void> {
-  if (type) {
-    await GTFSManager.forceRefresh(type);
-  } else {
-    await GTFSManager.forceRefresh('supplemented');
-    await GTFSManager.forceRefresh('regular');
-  }
-  
-  isDataLoaded = false; // Force reload
-  await ensureDataLoaded();
-}
-
-export function clearGTFSData() {
-  stopsData = [];
-  transfersData = [];
-  routesData = [];
-  isDataLoaded = false;
-  currentGTFSSource = 'local';
 }

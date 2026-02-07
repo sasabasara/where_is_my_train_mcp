@@ -17,16 +17,3 @@ export async function getTrainDestination(stopTimeUpdates: any[]): Promise<strin
   const lastStop = stopTimeUpdates[stopTimeUpdates.length - 1];
   return lastStop ? await stationMapper.getStationName(lastStop.stopId) : 'Unknown destination';
 }
-
-export function getMTADisclaimer(): string {
-  return '\n\n⚠️ Data provided "as is" without warranty. Source: MTA. Not endorsed by MTA.';
-}
-
-export async function getCurrentLocation(vehicle: any): Promise<string> {
-  if (!vehicle?.stopId) return '';
-  
-  const currentStationName = await stationMapper.getStationName(vehicle.stopId);
-  const statusText = vehicle.currentStatus === 0 ? 'approaching' : 
-                    vehicle.currentStatus === 1 ? 'at' : 'departed from';
-  return `currently ${statusText} ${currentStationName}`;
-}

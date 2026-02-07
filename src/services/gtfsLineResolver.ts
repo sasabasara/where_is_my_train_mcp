@@ -228,13 +228,3 @@ async function saveToCache(): Promise<void> {
     await fsPromises.writeFile(cacheFile, JSON.stringify(cache));
   } catch (err) { console.error('Cache save failed:', err); }
 }
-
-export function getStationLineCacheStatus() {
-  return { initialized: isInitialized, stationsCount: stationLinesMap?.size || 0 };
-}
-
-export async function rebuildStationLineCache(): Promise<void> {
-  console.log('[GTFS Resolver] Forcing rebuild of station-lines cache...');
-  isInitialized = false;
-  await ensureStationLineDataLoaded();
-}

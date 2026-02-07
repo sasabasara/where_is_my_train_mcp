@@ -67,6 +67,9 @@ Thumbs.db
 # Server automatically downloads and manages this data
 cache/
 
+# Smithery build artifacts (no longer used — self-hosted on Railway)
+.smithery/
+
 # Internal development docs
 .dev_docs/
 CLAUDE.md

@@ -194,22 +194,10 @@ export interface NearestStationArgs {
   service_filter?: string[];
 }
 
-export interface JourneyPlannerArgs {
-  from: string;
-  to: string;
-  time?: string;
-  accessible?: boolean;
-  avoid_lines?: string[];
-}
-
 export interface ServiceDisruptionsArgs {
   line?: string;
   location?: string;
   severity?: 'ALL' | 'CRITICAL' | 'MAJOR' | 'MINOR';
-}
-
-export interface SmartQueryArgs {
-  query: string;
 }
 
 export interface CacheStatus {
