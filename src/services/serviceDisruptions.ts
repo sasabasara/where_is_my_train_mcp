@@ -152,84 +152,31 @@ export class ServiceDisruptionAnalyzer {
   }
 
   private static formatDisruptionResponse(
-    disruptions: DisruptionInfo[], 
-    serviceContext: any, 
+    disruptions: DisruptionInfo[],
+    serviceContext: any,
     params: any
   ): any {
-    if (disruptions.length === 0) {
-      let response = `✅ **No major service disruptions detected**\n\n`;
-      
-      if (params.line) {
-        response += `The ${params.line} train appears to be running normally.\n\n`;
-      } else {
-        response += `NYC subway system operating normally.\n\n`;
-      }
-      
-      if (serviceContext.serviceNote) {
-        response += `${serviceContext.serviceNote}\n\n`;
-      }
-      
-      response += `💡 **Tips:**\n`;
-      response += `• Check "next trains at [station]" for real-time arrivals\n`;
-      response += `• Minor delays may still occur during peak hours\n`;
-      response += `• Weekend service patterns may differ\n\n`;
-      response += `⚠️ Data provided "as is" without warranty. Source: MTA. Not endorsed by MTA.`;
-      
-      return {
-        content: [{ type: "text", text: response }]
-      };
-    }
-
-    let response = `🚨 **Service Disruptions Detected**\n\n`;
-
     const critical = disruptions.filter(d => d.severity === 'CRITICAL');
     const major = disruptions.filter(d => d.severity === 'MAJOR');
     const minor = disruptions.filter(d => d.severity === 'MINOR');
-
-    if (critical.length > 0) {
-      response += `🔴 **CRITICAL DISRUPTIONS:**\n`;
-      critical.forEach(d => {
-        response += `**${d.line} Train:** ${d.title}\n`;
-        response += `${d.description}\n`;
-        if (d.estimatedResolution) {
-          response += `⏱️ Estimated resolution: ${d.estimatedResolution}\n`;
-        }
-        response += `🔄 **Alternatives:** ${d.alternativeRoutes.join(', ')}\n\n`;
-      });
-    }
-
-    if (major.length > 0) {
-      response += `🟡 **MAJOR DISRUPTIONS:**\n`;
-      major.forEach(d => {
-        response += `**${d.line} Train:** ${d.title}\n`;
-        response += `${d.description}\n`;
-        if (d.estimatedResolution) {
-          response += `⏱️ Estimated resolution: ${d.estimatedResolution}\n`;
-        }
-        response += `🔄 **Alternatives:** ${d.alternativeRoutes.join(', ')}\n\n`;
-      });
-    }
-
-    if (minor.length > 0) {
-      response += `🟢 **MINOR DISRUPTIONS:**\n`;
-      minor.forEach(d => {
-        response += `**${d.line} Train:** ${d.title} - ${d.description}\n`;
-      });
-      response += `\n`;
-    }
-
-    if (serviceContext.serviceNote) {
-      response += `${serviceContext.serviceNote}\n\n`;
-    }
-
-    response += `💡 **Recommendations:**\n`;
-    response += `• Allow extra travel time\n`;
-    response += `• Check real-time arrivals before traveling\n`;
-    response += `• Consider alternative routes listed above\n\n`;
-    response += `⚠️ Data provided "as is" without warranty. Source: MTA. Not endorsed by MTA.`;
+    const planned = disruptions.filter(d => d.severity === 'PLANNED');
 
     return {
-      content: [{ type: "text", text: response }]
+      timestamp: Date.now(),
+      timezone: 'America/New_York',
+      filteredLine: params.line || null,
+      filteredLocation: params.location || null,
+      filteredSeverity: params.severity || null,
+      systemStatus: disruptions.length === 0 ? 'normal' : 'disrupted',
+      counts: {
+        total: disruptions.length,
+        critical: critical.length,
+        major: major.length,
+        minor: minor.length,
+        planned: planned.length
+      },
+      disruptions,
+      serviceNote: serviceContext.serviceNote || null
     };
   }
 }
