@@ -11,20 +11,129 @@ import {
   handleElevatorEscalatorStatus
 } from "./handlers/toolHandlers.js";
 
-// Type-safe wrapper for handler results
-type HandlerResult = {
-  content: Array<{ type: string; text: string }>;
-  isError?: boolean;
-};
-
 import { ToolResponse } from "./types/index.js";
 
-function wrapHandlerResult(result: ToolResponse): { content: Array<{ type: "text"; text: string }>; isError?: boolean } {
-  return {
-    content: result.content.map((item) => ({ ...item, type: item.type as "text" })),
-    ...(result.isError && { isError: result.isError })
-  };
+// Handlers wrap their JSON in `content[0].text`; when an outputSchema is declared
+// the SDK also expects the parsed payload as `structuredContent`. Parse it once here.
+function wrapHandlerResult(result: ToolResponse): {
+  content: Array<{ type: "text"; text: string }>;
+  structuredContent?: Record<string, unknown>;
+  isError?: boolean;
+} {
+  const content = result.content.map((item) => ({ ...item, type: item.type as "text" }));
+  const wrapped: ReturnType<typeof wrapHandlerResult> = { content };
+  if (result.isError) wrapped.isError = result.isError;
+
+  const text = result.content[0]?.text;
+  if (text) {
+    try {
+      wrapped.structuredContent = JSON.parse(text);
+    } catch {
+      // Non-JSON text content (rare error path) — skip structuredContent
+    }
+  }
+  return wrapped;
 }
+
+// Every handler returns this StandardResponse wrapper around a tool-specific `data`
+const standardResponseShape = (dataSchema: z.ZodTypeAny) => ({
+  status: z.enum(["success", "error"]),
+  data: dataSchema,
+  message: z.string(),
+  metadata: z.object({ timestamp: z.number() })
+});
+
+// Tool-specific data shapes. All-optional + passthrough keeps the schema useful
+// without breaking when handlers add fields or return error-shape data (null /
+// {query} on failure).
+const findStationOutputSchema = standardResponseShape(
+  z.object({
+    searchQuery: z.string().optional(),
+    stationsFound: z.number().optional(),
+    stations: z.array(z.unknown()).optional(),
+    timestamp: z.number().optional(),
+    query: z.string().optional()
+  }).passthrough().nullable()
+);
+
+const nextTrainsOutputSchema = standardResponseShape(
+  z.object({
+    station: z.string().optional(),
+    arrivals: z.array(z.object({
+      line: z.string().optional(),
+      destination: z.string().nullable().optional(),
+      arrivalTimestamp: z.number().nullable().optional(),
+      station: z.string().optional(),
+      tripId: z.string().optional()
+    }).passthrough()).optional(),
+    count: z.number().optional(),
+    query: z.string().optional()
+  }).passthrough().nullable()
+);
+
+const serviceStatusOutputSchema = standardResponseShape(
+  z.object({
+    activeTrips: z.number().optional(),
+    totalAlerts: z.number().optional(),
+    topAlerts: z.array(z.string().optional()).optional()
+  }).passthrough().nullable()
+);
+
+const subwayAlertsOutputSchema = standardResponseShape(
+  z.array(z.object({
+    header: z.string().optional(),
+    description: z.string().optional(),
+    severity: z.union([z.string(), z.number()]).optional(),
+    affectedLines: z.array(z.string().optional()).optional()
+  }).passthrough()).nullable()
+);
+
+const stationTransfersOutputSchema = standardResponseShape(
+  z.object({
+    station: z.string().optional(),
+    transfers: z.array(z.string()).optional(),
+    query: z.string().optional()
+  }).passthrough().nullable()
+);
+
+const nearestStationOutputSchema = standardResponseShape(
+  z.array(z.object({
+    name: z.string(),
+    stopId: z.string(),
+    distance: z.number(),
+    coordinates: z.object({ lat: z.number(), lon: z.number() })
+  }).passthrough()).nullable()
+);
+
+const serviceDisruptionsOutputSchema = standardResponseShape(
+  z.object({
+    timestamp: z.number().optional(),
+    timezone: z.string().optional(),
+    filteredLine: z.string().nullable().optional(),
+    filteredLocation: z.string().nullable().optional(),
+    filteredSeverity: z.string().nullable().optional(),
+    systemStatus: z.enum(["normal", "disrupted"]).optional(),
+    counts: z.object({
+      total: z.number(),
+      critical: z.number(),
+      major: z.number(),
+      minor: z.number(),
+      planned: z.number()
+    }).optional(),
+    disruptions: z.array(z.unknown()).optional(),
+    serviceNote: z.string().nullable().optional()
+  }).passthrough().nullable()
+);
+
+const elevatorEscalatorOutputSchema = standardResponseShape(
+  z.array(z.object({
+    station: z.string(),
+    lines: z.string(),
+    equipment: z.enum(["Elevator", "Escalator"]),
+    reason: z.string(),
+    status: z.enum(["Upcoming Work", "Currently Out"])
+  }).passthrough()).nullable()
+);
 
 // Tool logging helper
 function logToolCall(toolName: string, args: Record<string, unknown>): void {
@@ -200,6 +309,7 @@ export function createMcpServer() {
       inputSchema: {
         query: z.string().describe("Station name or partial name to search for")
       },
+      outputSchema: findStationOutputSchema,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -234,6 +344,7 @@ export function createMcpServer() {
         limit: z.number().optional().describe("Maximum number of arrivals to return"),
         line: z.string().optional().describe("Filter by specific train line")
       },
+      outputSchema: nextTrainsOutputSchema,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -267,6 +378,7 @@ export function createMcpServer() {
         include_metrics: z.boolean().optional().describe("Include performance metrics like on-time percentage"),
         time_range: z.enum(["current", "today", "week"]).optional().describe("Time range for status information")
       },
+      outputSchema: serviceStatusOutputSchema,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -301,6 +413,7 @@ export function createMcpServer() {
         category: z.enum(["ALL", "DELAYS", "SUSPENSIONS", "REROUTES", "PLANNED_WORK", "ACCESSIBILITY"]).optional().describe("Filter by alert category"),
         severity: z.enum(["ALL", "CRITICAL", "MAJOR", "MINOR", "PLANNED"]).optional().describe("Filter by alert severity")
       },
+      outputSchema: subwayAlertsOutputSchema,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -332,6 +445,7 @@ export function createMcpServer() {
       inputSchema: {
         station: z.string().describe("Station name to find transfers for")
       },
+      outputSchema: stationTransfersOutputSchema,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -369,6 +483,7 @@ export function createMcpServer() {
         accessible_only: z.boolean().optional().describe("Return only wheelchair accessible stations"),
         service_filter: z.array(z.string()).optional().describe("Only return stations served by specific lines")
       },
+      outputSchema: nearestStationOutputSchema,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -403,6 +518,7 @@ export function createMcpServer() {
         location: z.string().optional().describe("Filter disruptions affecting a specific area or station"),
         severity: z.enum(["ALL", "CRITICAL", "MAJOR", "MINOR"]).optional().describe("Filter by disruption severity")
       },
+      outputSchema: serviceDisruptionsOutputSchema,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -437,6 +553,7 @@ export function createMcpServer() {
         ada_only: z.boolean().optional().describe("Show only ADA-accessible equipment (default: false)"),
         outage_type: z.enum(["current", "upcoming", "all"]).optional().describe("Filter by outage timing (default: current)")
       },
+      outputSchema: elevatorEscalatorOutputSchema,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,

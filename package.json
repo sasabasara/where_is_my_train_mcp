@@ -37,6 +37,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.26.0",
     "express": "^4.21.2",
+    "express-rate-limit": "^8.4.1",
     "node-stream-zip": "^1.15.0",
     "protobufjs": "^7.5.4",
     "zod": "^3.25.76"

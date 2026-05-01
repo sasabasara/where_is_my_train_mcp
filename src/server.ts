@@ -1,4 +1,5 @@
 import express from "express";
+import rateLimit from "express-rate-limit";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { createMcpServer } from "./index.js";
@@ -7,6 +8,9 @@ import { ensureStationLineDataLoaded } from "./services/gtfsLineResolver.js";
 import { randomUUID } from "crypto";
 
 const app = express();
+
+// Railway terminates TLS at its proxy, so trust the first hop to read X-Forwarded-For
+app.set("trust proxy", 1);
 
 // Parse JSON bodies for all routes
 app.use(express.json());
@@ -82,6 +86,20 @@ app.use((req, res, next) => {
 
     next();
 });
+
+// Per-IP rate limit on the MCP endpoint to absorb casual abuse
+const mcpLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    limit: 100,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    message: {
+        jsonrpc: "2.0",
+        error: { code: -32000, message: "Rate limit exceeded. Try again in a minute." },
+        id: null
+    }
+});
+app.use("/mcp", mcpLimiter);
 
 // Store Streamable HTTP transports by session ID
 const httpTransports: Record<string, StreamableHTTPServerTransport> = {};
