@@ -1,0 +1,62 @@
+{
+  "name": "where-is-my-train-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for NYC subway real-time information using MTA GTFS feeds",
+  "main": "./src/index.ts",
+  "module": "./src/index.ts",
+  "type": "module",
+  "scripts": {
+    "start": "node dist/src/server.js",
+    "dev": "tsx src/server.ts",
+    "start:railway": "node dist/src/server.js",
+    "build": "tsc",
+    "prepublishOnly": "npm run build",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "nyc",
+    "subway",
+    "mta",
+    "gtfs",
+    "realtime",
+    "transit"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sasabasara/where_is_my_train_mcp.git"
+  },
+  "homepage": "https://github.com/sasabasara/where_is_my_train_mcp#readme",
+  "bugs": {
+    "url": "https://github.com/sasabasara/where_is_my_train_mcp/issues"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.26.0",
+    "express": "^4.21.2",
+    "express-rate-limit": "^8.4.1",
+    "node-stream-zip": "^1.15.0",
+    "protobufjs": "^7.5.4",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.17.2",
+    "tsx": "^4.20.4",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "mcp": {
+    "server": {
+      "name": "where-is-my-train-mta",
+      "description": "Comprehensive NYC Subway assistant. USE GUIDELINES: 1. Use 'find_station' to map names to IDs. 2. Use 'next_trains' for real-time arrivals (data updates every 45s). 3. Use 'subway_alerts' for service delays and line-impact analysis. 4. Use 'nearest_station' for GPS-based discovery. 5. Follow up with 'station_transfers' for multi-leg trip planning.",
+      "version": "1.0.0"
+    }
+  }
+}
