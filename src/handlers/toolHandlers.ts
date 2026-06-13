@@ -111,9 +111,11 @@ export async function handleNextTrains(args: NextTrainsArgs): Promise<ToolRespon
     // Use only the top-scoring tier for arrival matching
     const topScore = validStations[0].score;
     const topMatches = validStations.filter(s => s.score === topScore);
-    const validStationNames = topMatches.map(s => s.stop_name.toLowerCase().trim());
+    const parentIds = new Set<string>(topMatches.map(s => s.parent_station || s.stop_id));
     const data = await fetchMTAData();
     const arrivals: any[] = [];
+    const now = Date.now();
+    const PAST_GRACE_MS = 30 * 1000;
 
     for (const entity of data.entity || []) {
       if (!entity.tripUpdate) continue;
@@ -121,18 +123,25 @@ export async function handleNextTrains(args: NextTrainsArgs): Promise<ToolRespon
       if (args.line && trip.routeId !== args.line.toUpperCase()) continue;
 
       for (const update of entity.tripUpdate.stopTimeUpdate || []) {
+        if (!update.stopId) continue;
+        const base = update.stopId.replace(/[NS]$/, '');
+        if (!parentIds.has(base)) continue;
+
+        const t = update.arrival?.time ?? update.departure?.time;
+        const arrivalTimestamp = t ? Number(t) * 1000 : null;
+        if (arrivalTimestamp === null) continue;
+        if (arrivalTimestamp < now - PAST_GRACE_MS) continue;
+
         const stopRecord = stopsData.find(stop => stop.stop_id === update.stopId);
         const stationName = stopRecord ? stopRecord.stop_name : update.stopId;
 
-        if (validStationNames.includes(stationName.toLowerCase().trim())) {
-          arrivals.push({
-            line: trip.routeId,
-            destination: await getTrainDestination(entity.tripUpdate.stopTimeUpdate),
-            arrivalTimestamp: update.arrival?.time ? Number(update.arrival.time) * 1000 : null,
-            station: stationName,
-            tripId: trip.tripId
-          });
-        }
+        arrivals.push({
+          line: trip.routeId,
+          destination: await getTrainDestination(entity.tripUpdate.stopTimeUpdate),
+          arrivalTimestamp,
+          station: stationName,
+          tripId: trip.tripId
+        });
       }
     }
 
@@ -141,8 +150,9 @@ export async function handleNextTrains(args: NextTrainsArgs): Promise<ToolRespon
     const result = {
       station: validStations[0].stop_name,
       arrivals: arrivals.slice(0, limit),
-      count: arrivals.length
+      count: 0
     };
+    result.count = result.arrivals.length;
 
     return createStandardResponse(result, `Found ${result.arrivals.length} upcoming trains for ${result.station}`);
   } catch (error) {

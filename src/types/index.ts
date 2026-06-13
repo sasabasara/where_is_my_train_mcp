@@ -184,8 +184,6 @@ export interface NextTrainsArgs {
 
 export interface ServiceStatusArgs {
   line?: string;
-  include_metrics?: boolean;
-  time_range?: 'current' | 'today' | 'week';
 }
 
 export interface SubwayAlertsArgs {
