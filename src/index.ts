@@ -372,11 +372,9 @@ export function createMcpServer() {
     "service_status",
     {
       title: "Service Status",
-      description: "Comprehensive service status with performance metrics, on-time rates, and system-wide health indicators",
+      description: "System-wide service snapshot: count of currently active trips, total active alerts, and the top current alert headlines",
       inputSchema: {
-        line: z.string().optional().describe("Filter by specific train line"),
-        include_metrics: z.boolean().optional().describe("Include performance metrics like on-time percentage"),
-        time_range: z.enum(["current", "today", "week"]).optional().describe("Time range for status information")
+        line: z.string().optional().describe("Filter by specific train line")
       },
       outputSchema: serviceStatusOutputSchema,
       annotations: {

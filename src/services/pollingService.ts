@@ -16,7 +16,9 @@ async function fetchData() {
     try {
         const data = await fetchMTAData();
         // Cache is updated internally in mtaService.ts
-        console.log(`[Polling] Fetched ${data.entity?.length || 0} entities`);
+        if (process.env.DEBUG) {
+            console.log(`[Polling] Fetched ${data.entity?.length || 0} entities`);
+        }
     } catch (error) {
         console.error("[Polling] Failed to fetch MTA data:", error);
     }

@@ -104,6 +104,12 @@ app.use("/mcp", mcpLimiter);
 // Store Streamable HTTP transports by session ID
 const httpTransports: Record<string, StreamableHTTPServerTransport> = {};
 
+const sessionLastSeen: Record<string, number> = {};
+
+const SESSION_IDLE_MS = 30 * 60 * 1000;
+const SESSION_SWEEP_MS = 5 * 60 * 1000;
+const SESSION_MAX = 1000;
+
 // Health check / root endpoint
 app.get("/", (req, res) => {
     res.json({
@@ -117,6 +123,42 @@ app.get("/", (req, res) => {
     });
 });
 
+function sweepIdleSessions(): void {
+    const now = Date.now();
+    const ids = Object.keys(httpTransports);
+
+    for (const id of ids) {
+        const lastSeen = sessionLastSeen[id];
+        if (lastSeen === undefined || now - lastSeen > SESSION_IDLE_MS) {
+            try {
+                httpTransports[id].close();
+            } catch {
+                delete httpTransports[id];
+            }
+            delete sessionLastSeen[id];
+        }
+    }
+
+    const remaining = Object.keys(httpTransports);
+    if (remaining.length > SESSION_MAX) {
+        const byOldest = remaining.sort(
+            (a, b) => (sessionLastSeen[a] ?? 0) - (sessionLastSeen[b] ?? 0)
+        );
+        const toEvict = byOldest.slice(0, remaining.length - SESSION_MAX);
+        for (const id of toEvict) {
+            try {
+                httpTransports[id].close();
+            } catch {
+                delete httpTransports[id];
+            }
+            delete sessionLastSeen[id];
+        }
+    }
+}
+
+const sessionSweeper = setInterval(sweepIdleSessions, SESSION_SWEEP_MS);
+sessionSweeper.unref();
+
 // Streamable HTTP transport (POST /mcp)
 app.post("/mcp", async (req, res) => {
     const sessionId = req.headers["mcp-session-id"] as string | undefined;
@@ -124,6 +166,7 @@ app.post("/mcp", async (req, res) => {
 
     if (sessionId && httpTransports[sessionId]) {
         transport = httpTransports[sessionId];
+        sessionLastSeen[sessionId] = Date.now();
     } else if (!sessionId && isInitializeRequest(req.body)) {
         // Extract client info from initialize request
         const clientInfo = req.body.params?.clientInfo;
@@ -136,6 +179,7 @@ app.post("/mcp", async (req, res) => {
             enableJsonResponse: true,
             onsessioninitialized: (id) => {
                 httpTransports[id] = transport;
+                sessionLastSeen[id] = Date.now();
                 console.log(JSON.stringify({
                     event: "session_start",
                     timestamp: new Date().toISOString(),
@@ -156,6 +200,7 @@ app.post("/mcp", async (req, res) => {
                     activeSessions: Object.keys(httpTransports).length - 1
                 }));
                 delete httpTransports[transport.sessionId];
+                delete sessionLastSeen[transport.sessionId];
             }
         };
 
