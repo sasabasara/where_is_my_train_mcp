@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/sasabasara-where-is-my-train-mcp-badge.png)](https://mseep.ai/app/sasabasara-where-is-my-train-mcp)
+
 # Where's My Train? — MCP Server (NYC Subway)
 
 [![smithery badge](https://smithery.ai/badge/sasabasara/where_is_my_train_mcp)](https://smithery.ai/servers/sasabasara/where_is_my_train_mcp)
