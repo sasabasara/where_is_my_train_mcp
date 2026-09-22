@@ -279,23 +279,23 @@ app.get("/.well-known/mcp/server-card.json", (req, res) => {
         },
         capabilities: {
             tools: [
-                { name: "find_station", description: "Search for subway stations by name" },
-                { name: "next_trains", description: "Get real-time train arrivals" },
-                { name: "service_status", description: "Get service status for subway lines" },
-                { name: "subway_alerts", description: "Get service alerts and delays" },
-                { name: "station_transfers", description: "Find transfer options at a station" },
-                { name: "nearest_station", description: "Find closest subway stations" },
-                { name: "service_disruptions", description: "Get service disruption information" },
-                { name: "elevator_and_escalator_status", description: "Get elevator/escalator outage info" }
+                { name: "find_station", description: "Search for subway stations by name with fuzzy matching and relevance scoring" },
+                { name: "next_trains", description: "Real-time train arrivals with delay predictions, crowding levels, and service alerts" },
+                { name: "service_status", description: "System-wide service snapshot: count of currently active trips, total active alerts, and the top current alert headlines" },
+                { name: "subway_alerts", description: "Detailed service alerts with impact analysis, affected stations, and estimated resolution times" },
+                { name: "station_transfers", description: "Find all train line transfer options at a specific subway station" },
+                { name: "nearest_station", description: "Find closest subway stations by distance with accessibility info and real-time service status" },
+                { name: "service_disruptions", description: "Get comprehensive service disruption information with impact analysis, alternative routes, and estimated resolution times" },
+                { name: "elevator_and_escalator_status", description: "Get current and upcoming elevator and escalator outages at subway stations, including ADA accessibility impact and estimated return to service" }
             ],
             prompts: [
                 { name: "check_train_arrivals", description: "Check upcoming train arrivals at a station" },
-                { name: "check_service_alerts", description: "Check current service alerts" },
-                { name: "check_elevator_status", description: "Check elevator/escalator status" }
+                { name: "check_service_alerts", description: "Check current subway service alerts" },
+                { name: "check_elevator_status", description: "Check elevator and escalator status at a station" }
             ],
             resources: [
-                { uri: "subway://lines", name: "Subway Lines", description: "List of all subway lines" },
-                { uri: "subway://major-stations", name: "Major Stations", description: "List of major transfer stations" }
+                { uri: "subway://lines", name: "subway_lines", description: "NYC Subway Lines Reference" },
+                { uri: "subway://major-stations", name: "major_stations", description: "Major NYC Subway Transfer Stations" }
             ]
         }
     });
