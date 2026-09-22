@@ -1,6 +1,6 @@
 # Where's My Train? — MCP Server (NYC Subway)
 
-[![smithery badge](https://smithery.ai/badge/sasabasara/where_is_my_train_mcp)](https://smithery.ai/servers/sasabasara/where_is_my_train_mcp)
+[![Smithery](https://img.shields.io/badge/Smithery-Where's%20my%20train%3F-7c3aed)](https://smithery.ai/servers/sasabasara/where_is_my_train_mcp)
 
 A Model Context Protocol (MCP) server for real-time NYC subway info: arrivals, station lookup, service alerts, accessibility status, and more — powered by live MTA feeds.
 
