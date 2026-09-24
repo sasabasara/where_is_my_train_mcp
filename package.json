@@ -1,16 +1,13 @@
 {
   "name": "where-is-my-train-mcp",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "MCP server for NYC subway real-time information using MTA GTFS feeds",
-  "main": "./src/index.ts",
-  "module": "./src/index.ts",
   "type": "module",
   "scripts": {
     "start": "node dist/src/server.js",
     "dev": "tsx src/server.ts",
     "start:railway": "node dist/src/server.js",
     "build": "tsc",
-    "prepublishOnly": "npm run build",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -50,13 +47,13 @@
     "vitest": "^4.0.18"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22"
   },
   "mcp": {
     "server": {
       "name": "where-is-my-train-mta",
-      "description": "Comprehensive NYC Subway assistant. USE GUIDELINES: 1. Use 'find_station' to map names to IDs. 2. Use 'next_trains' for real-time arrivals (data updates every 45s). 3. Use 'subway_alerts' for service delays and line-impact analysis. 4. Use 'nearest_station' for GPS-based discovery. 5. Follow up with 'station_transfers' for multi-leg trip planning.",
-      "version": "1.0.0"
+      "description": "Real-time NYC subway assistant. Use 'next_trains' for live arrivals (station name or stop_id, optional line and direction), 'service_disruptions'/'subway_alerts' for delays and planned work, 'nearest_station' for stations near coordinates, 'find_station' and 'station_transfers' for station info, and 'elevator_and_escalator_status' for accessibility.",
+      "version": "1.1.0"
     }
   }
 }
