@@ -1,5 +1,16 @@
 import { fetchMTAData, fetchEquipmentOutages, fetchEquipmentList } from "../services/mtaService.js";
 import { getSubwayAlerts } from "../services/alertService.js";
+import {
+  ensureStationInfoLoaded,
+  getStationInfo,
+  getComplexStations,
+  getComplexRoutes,
+  routeMatchesLine,
+  stationServesLine,
+  directionLabel,
+  directionMatches,
+  sortRoutes
+} from "../services/stationInfoService.js";
 import { StationMatcher, getStopsData, getTransfersData, getGTFSSourceInfo, ensureDataLoaded } from "../services/stationService.js";
 import { calculateDistance, getTrainDestination } from "../utils/index.js";
 import { ServiceDisruptionAnalyzer } from "../services/serviceDisruptions.js";
@@ -18,7 +29,8 @@ import {
   GTFSEntity,
   MTAFeedData,
   Stop,
-  Transfer
+  Transfer,
+  StationInfo
 } from "../types/index.js";
 
 /**
@@ -54,8 +66,44 @@ export async function handleServiceDisruptions(args: ServiceDisruptionsArgs): Pr
   }
 }
 
+const BOROUGHS: Record<string, string> = { M: 'Manhattan', Bk: 'Brooklyn', Bx: 'Bronx', Q: 'Queens', SI: 'Staten Island' };
+
+function complexAccessibility(stations: StationInfo[]): StationInfo['accessibility'] | null {
+  if (stations.length === 0) return null;
+  if (stations.every(s => s.accessibility === 'full')) return 'full';
+  if (stations.some(s => s.accessibility !== 'none')) return 'partial';
+  return 'none';
+}
+
+/** Station summary used by find_station / nearest_station / ambiguity responses. */
+function describeComplex(stopId: string, fallbackName: string) {
+  const complex = getComplexStations(stopId);
+  const info = getStationInfo(stopId);
+  return {
+    name: info?.name ?? fallbackName,
+    stopIds: complex.length > 0 ? complex.map(s => s.stopId) : [stopId],
+    lines: getComplexRoutes(stopId),
+    borough: info ? BOROUGHS[info.borough] ?? info.borough : null,
+    accessibility: complexAccessibility(complex),
+    accessibilityNotes: accessibilityNotes(complex)
+  };
+}
+
+/** e.g. "Accessible: L, N Q R W. Not accessible: 4 5 6" for a partly accessible complex. */
+function accessibilityNotes(complex: StationInfo[]): string | null {
+  const notes = complex.map(s => s.accessibilityNotes ? `${s.routes.join(' ')}: ${s.accessibilityNotes}` : null).filter(Boolean);
+  const accessible = complex.filter(s => s.accessibility === 'full').map(s => s.routes.join(' '));
+  const inaccessible = complex.filter(s => s.accessibility === 'none').map(s => s.routes.join(' '));
+  if (accessible.length > 0 && inaccessible.length > 0) {
+    notes.unshift(`Accessible: ${accessible.join(', ')}. Not accessible: ${inaccessible.join(', ')}`);
+  }
+  return notes.join('; ') || null;
+}
+
+const complexOf = (stopId: string) => getStationInfo(stopId)?.complexId;
+
 export async function handleFindStation(args: FindStationArgs): Promise<ToolResponse> {
-  await ensureDataLoaded();
+  await Promise.all([ensureDataLoaded(), ensureStationInfoLoaded()]);
 
   const stationQuery = args?.query?.trim() || "";
   if (!stationQuery) {
@@ -65,22 +113,29 @@ export async function handleFindStation(args: FindStationArgs): Promise<ToolResp
   try {
     const stopsData = getStopsData();
     const matches = StationMatcher.findBestMatches(stationQuery, stopsData);
-    const groups = StationMatcher.groupByName(matches);
+    const groups = StationMatcher.groupByComplex(matches, complexOf);
 
     if (groups.length === 0) {
       return createStandardResponse({ query: stationQuery }, `No stations found matching "${stationQuery}". Try a different spelling or use partial names.`, true);
     }
 
+    const stations = groups.map(group => ({
+      ...describeComplex(group.stopIds[0], group.name),
+      name: group.name,
+      score: group.score,
+      matchType: group.matchType
+    }));
+
     const result = {
       searchQuery: stationQuery,
-      stationsFound: groups.length,
-      stations: groups,
+      stationsFound: stations.length,
+      stations,
       timestamp: Date.now()
     };
 
     return createStandardResponse(
       result,
-      `Found ${groups.length} stations matching "${stationQuery}"`
+      `Found ${stations.length} stations matching "${stationQuery}"`
     );
   } catch (error) {
     return createStandardResponse(null, "Station search temporarily unavailable.", true);
@@ -88,25 +143,68 @@ export async function handleFindStation(args: FindStationArgs): Promise<ToolResp
 }
 
 export async function handleNextTrains(args: NextTrainsArgs): Promise<ToolResponse> {
-  await ensureDataLoaded();
+  await Promise.all([ensureDataLoaded(), ensureStationInfoLoaded()]);
 
   const stationQuery = args?.station?.trim() || "";
-  if (!stationQuery) {
-    return createStandardResponse(null, "Please provide a valid station name.", true);
+  const stopIdArg = args?.stop_id?.trim().toUpperCase().replace(/[NS]$/, '') || "";
+  if (!stationQuery && !stopIdArg) {
+    return createStandardResponse(null, "Please provide a station name or stop_id.", true);
   }
 
   try {
     const stopsData = getStopsData();
-    const validStations = StationMatcher.findBestMatches(stationQuery, stopsData);
 
-    if (validStations.length === 0) {
-      return createStandardResponse({ query: stationQuery }, `No stations found matching "${stationQuery}"`, true);
+    // Resolve the request to one station complex (a set of parent stop IDs)
+    let parentIds: string[];
+    let stationName: string;
+
+    if (stopIdArg) {
+      const parent = stopsData.find(stop => stop.stop_id === stopIdArg && stop.location_type === '1');
+      if (!parent) {
+        return createStandardResponse({ query: stopIdArg }, `No station with stop_id "${stopIdArg}"`, true);
+      }
+      const complex = getComplexStations(stopIdArg);
+      parentIds = complex.length > 0 ? complex.map(s => s.stopId) : [stopIdArg];
+      stationName = parent.stop_name;
+    } else {
+      const matches = StationMatcher.findBestMatches(stationQuery, stopsData);
+      if (matches.length === 0) {
+        return createStandardResponse({ query: stationQuery }, `No stations found matching "${stationQuery}"`, true);
+      }
+
+      // Top-scoring tier only, one candidate per complex
+      const topScore = matches[0].score;
+      let candidates = StationMatcher.groupByComplex(matches.filter(m => m.score === topScore), complexOf);
+
+      if (args.line) {
+        const servesLine = candidates.filter(c =>
+          getComplexStations(c.stopIds[0]).some(s => stationServesLine(s, args.line!))
+        );
+        if (servesLine.length > 0) candidates = servesLine;
+      }
+
+      if (candidates.length > 1) {
+        const options = candidates.map(c => describeComplex(c.stopIds[0], c.name));
+        return createStandardResponse(
+          { query: stationQuery, ambiguous: true, options, arrivals: [], count: 0 },
+          `"${stationQuery}" matches ${options.length} different stations. Ask the rider which one, then call again with its stop_id (or pass line).`
+        );
+      }
+
+      const chosen = candidates[0];
+      const complex = getComplexStations(chosen.stopIds[0]);
+      parentIds = complex.length > 0 ? complex.map(s => s.stopId) : chosen.stopIds;
+      stationName = chosen.name;
     }
 
-    // Use only the top-scoring tier for arrival matching
-    const topScore = validStations[0].score;
-    const topMatches = validStations.filter(s => s.score === topScore);
-    const parentIds = new Set<string>(topMatches.map(s => s.parent_station || s.stop_id));
+    // Direction: match against the MTA platform labels at this complex; if the request
+    // matches none of them (e.g. "uptown" at a Queens-bound/Manhattan-bound station), show both.
+    const platformIds = parentIds.flatMap(id => [`${id}N`, `${id}S`]);
+    const availableDirections = [...new Set(platformIds.map(id => directionLabel(id)).filter(Boolean))] as string[];
+    const direction = args.direction?.trim();
+    const directionApplies = Boolean(direction) && platformIds.some(id => directionMatches(id, direction!));
+
+    const parentIdSet = new Set(parentIds);
     const data = await fetchMTAData();
     const arrivals: any[] = [];
     const now = Date.now();
@@ -115,26 +213,26 @@ export async function handleNextTrains(args: NextTrainsArgs): Promise<ToolRespon
     for (const entity of data.entity || []) {
       if (!entity.tripUpdate) continue;
       const trip = entity.tripUpdate.trip;
-      if (args.line && trip.routeId !== args.line.toUpperCase()) continue;
+      if (args.line && !routeMatchesLine(trip.routeId, args.line)) continue;
 
       for (const update of entity.tripUpdate.stopTimeUpdate || []) {
         if (!update.stopId) continue;
         const base = update.stopId.replace(/[NS]$/, '');
-        if (!parentIds.has(base)) continue;
+        if (!parentIdSet.has(base)) continue;
+        if (directionApplies && !directionMatches(update.stopId, direction!)) continue;
 
         const t = update.arrival?.time ?? update.departure?.time;
         const arrivalTimestamp = t ? Number(t) * 1000 : null;
         if (arrivalTimestamp === null) continue;
         if (arrivalTimestamp < now - PAST_GRACE_MS) continue;
 
-        const stopRecord = stopsData.find(stop => stop.stop_id === update.stopId);
-        const stationName = stopRecord ? stopRecord.stop_name : update.stopId;
-
         arrivals.push({
           line: trip.routeId,
+          direction: directionLabel(update.stopId),
           destination: await getTrainDestination(entity.tripUpdate.stopTimeUpdate),
           arrivalTimestamp,
-          station: stationName,
+          station: getStationInfo(base)?.name ?? stationName,
+          stopId: update.stopId,
           tripId: trip.tripId
         });
       }
@@ -142,14 +240,22 @@ export async function handleNextTrains(args: NextTrainsArgs): Promise<ToolRespon
 
     arrivals.sort((a, b) => (a.arrivalTimestamp || 0) - (b.arrivalTimestamp || 0));
     const limit = Math.min(args.limit || 5, 10);
-    const result = {
-      station: validStations[0].stop_name,
+    const result: Record<string, unknown> = {
+      station: stationName,
+      stopIds: parentIds,
+      lines: getComplexRoutes(parentIds[0]),
+      availableDirections,
       arrivals: arrivals.slice(0, limit),
-      count: 0
+      count: Math.min(arrivals.length, limit)
     };
-    result.count = result.arrivals.length;
+    if (direction && !directionApplies) {
+      result.directionNote = `"${direction}" doesn't match this station's directions (${availableDirections.join(', ')}); showing all directions.`;
+    }
+    if (data.feedStatus?.failedFeeds?.length) {
+      result.unavailableFeeds = data.feedStatus.failedFeeds;
+    }
 
-    return createStandardResponse(result, `Found ${result.arrivals.length} upcoming trains for ${result.station}`);
+    return createStandardResponse(result, `Found ${result.count} upcoming trains for ${stationName}`);
   } catch (error) {
     return createStandardResponse(null, "Train arrival data temporarily unavailable.", true);
   }
@@ -212,7 +318,7 @@ export async function handleSubwayAlerts(args: SubwayAlertsArgs): Promise<ToolRe
 }
 
 export async function handleStationTransfers(args: StationTransfersArgs): Promise<ToolResponse> {
-  await ensureDataLoaded();
+  await Promise.all([ensureDataLoaded(), ensureStationInfoLoaded()]);
   const stationQuery = args?.station?.trim() || "";
   if (!stationQuery) {
     return createStandardResponse(null, "Please provide a station name.", true);
@@ -226,23 +332,39 @@ export async function handleStationTransfers(args: StationTransfersArgs): Promis
       return createStandardResponse({ query: stationQuery }, `No stations found matching "${stationQuery}"`, true);
     }
 
-    const transfersData = getTransfersData();
     const station = matches[0];
-    const stationTransfers = transfersData.filter(t => t.from_stop_id === station.stop_id || t.to_stop_id === station.stop_id);
 
-    const connections = [...new Set(stationTransfers.map(t => {
-      const otherId = t.from_stop_id === station.stop_id ? t.to_stop_id : t.from_stop_id;
-      return stopsData.find(s => s.stop_id === otherId)?.stop_name;
-    }).filter(Boolean))].sort();
+    // Everything in the complex, plus any transfers.txt partners outside it
+    const connectedIds = new Set(getComplexStations(station.stop_id).map(s => s.stopId));
+    connectedIds.add(station.stop_id);
+    for (const t of getTransfersData()) {
+      if (t.from_stop_id === station.stop_id) connectedIds.add(t.to_stop_id);
+      if (t.to_stop_id === station.stop_id) connectedIds.add(t.from_stop_id);
+    }
 
-    return createStandardResponse({ station: station.stop_name, transfers: connections }, `Found ${connections.length} transfer connections for ${station.stop_name}`);
+    const connections = [...connectedIds].map(id => {
+      const info = getStationInfo(id);
+      return {
+        name: info?.name ?? stopsData.find(s => s.stop_id === id)?.stop_name ?? id,
+        stopId: id,
+        lines: info?.routes ?? []
+      };
+    });
+
+    const result = {
+      station: station.stop_name,
+      lines: sortRoutes([...new Set(connections.flatMap(c => c.lines))]),
+      connections
+    };
+
+    return createStandardResponse(result, `${station.stop_name}: ${result.lines.length} lines across ${connections.length} connected platforms`);
   } catch (error) {
     return createStandardResponse(null, "Transfer information temporarily unavailable.", true);
   }
 }
 
 export async function handleNearestStation(args: NearestStationArgs): Promise<ToolResponse> {
-  await ensureDataLoaded();
+  await Promise.all([ensureDataLoaded(), ensureStationInfoLoaded()]);
   if (args?.lat === undefined || args?.lon === undefined) {
     return createStandardResponse(null, "GPS coordinates (lat/lon) are required.", true);
   }
@@ -252,18 +374,40 @@ export async function handleNearestStation(args: NearestStationArgs): Promise<To
     const radius = args.radius || 1000;
     const limit = args.limit || 5;
 
-    const nearby = stopsData
-      .filter(stop => stop.location_type === '1' && stop.stop_lat && stop.stop_lon)
-      .map(stop => ({
-        name: stop.stop_name,
-        stopId: stop.stop_id,
-        distance: Math.round(calculateDistance(args.lat!, args.lon!, Number(stop.stop_lat), Number(stop.stop_lon))),
-        coordinates: { lat: Number(stop.stop_lat), lon: Number(stop.stop_lon) }
-      }))
-      .filter(station => station.distance <= radius)
-      .sort((a, b) => a.distance - b.distance)
-      .slice(0, limit);
+    // Nearest platform per complex, so Union Sq shows up once, not three times
+    const byComplex = new Map<string, { stopId: string; stopName: string; distance: number; lat: number; lon: number }>();
+    for (const stop of stopsData) {
+      if (stop.location_type !== '1' || !stop.stop_lat || !stop.stop_lon) continue;
+      const lat = Number(stop.stop_lat), lon = Number(stop.stop_lon);
+      const distance = Math.round(calculateDistance(args.lat, args.lon, lat, lon));
+      if (distance > radius) continue;
 
+      const key = complexOf(stop.stop_id) ?? stop.stop_id;
+      const existing = byComplex.get(key);
+      if (!existing || distance < existing.distance) {
+        byComplex.set(key, { stopId: stop.stop_id, stopName: stop.stop_name, distance, lat, lon });
+      }
+    }
+
+    let nearby = [...byComplex.values()]
+      .sort((a, b) => a.distance - b.distance)
+      .map(s => ({
+        ...describeComplex(s.stopId, s.stopName),
+        stopId: s.stopId,
+        distance: s.distance,
+        coordinates: { lat: s.lat, lon: s.lon }
+      }));
+
+    if (args.accessible_only) {
+      nearby = nearby.filter(s => s.accessibility === 'full' || s.accessibility === 'partial');
+    }
+    if (args.service_filter?.length) {
+      nearby = nearby.filter(s =>
+        args.service_filter!.some(line => getComplexStations(s.stopId).some(st => stationServesLine(st, line)))
+      );
+    }
+
+    nearby = nearby.slice(0, limit);
     return createStandardResponse(nearby, `Found ${nearby.length} stations within ${radius}m`);
   } catch (error) {
     return createStandardResponse(null, "Nearest station search temporarily unavailable.", true);

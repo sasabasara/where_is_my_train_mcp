@@ -100,10 +100,24 @@ export class StationMatcher {
   }
 
   static groupByName(matches: StationMatch[]): StationGroup[] {
+    return this.groupBy(matches, match => match.stop_name);
+  }
+
+  /**
+   * One group per station complex, so "23 St" yields four separate stations while
+   * Times Sq-42 St and 42 St-Port Authority (one complex) yield one. Name of the
+   * best-scoring member is used for the group.
+   */
+  static groupByComplex(matches: StationMatch[], complexOf: (stopId: string) => string | undefined): StationGroup[] {
+    return this.groupBy(matches, match => complexOf(match.stop_id) ?? `name:${match.stop_name}`);
+  }
+
+  private static groupBy(matches: StationMatch[], keyOf: (match: StationMatch) => string): StationGroup[] {
     const groups = new Map<string, StationGroup>();
 
     for (const match of matches) {
-      const existing = groups.get(match.stop_name);
+      const key = keyOf(match);
+      const existing = groups.get(key);
       if (existing) {
         existing.stopIds.push(match.stop_id);
         if (match.score > existing.score) {
@@ -111,7 +125,7 @@ export class StationMatcher {
           existing.matchType = match.matchType;
         }
       } else {
-        groups.set(match.stop_name, {
+        groups.set(key, {
           name: match.stop_name,
           stopIds: [match.stop_id],
           score: match.score,

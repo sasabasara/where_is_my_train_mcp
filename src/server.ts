@@ -5,6 +5,7 @@ import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { createMcpServer } from "./index.js";
 import { startPolling } from "./services/pollingService.js";
 import { ensureStationLineDataLoaded } from "./services/gtfsLineResolver.js";
+import { ensureStationInfoLoaded } from "./services/stationInfoService.js";
 import { randomUUID } from "crypto";
 
 const app = express();
@@ -284,12 +285,12 @@ app.get("/.well-known/mcp/server-card.json", (req, res) => {
         },
         capabilities: {
             tools: [
-                { name: "find_station", description: "Search for subway stations by name with fuzzy matching and relevance scoring" },
-                { name: "next_trains", description: "Real-time train arrivals at a station from live MTA feeds: line, destination, and predicted arrival time" },
+                { name: "find_station", description: "Search for subway stations by name, with stop IDs, daytime lines, and accessibility" },
+                { name: "next_trains", description: "Real-time train arrivals at a station from live MTA feeds: line, direction, destination, and predicted arrival time" },
                 { name: "service_status", description: "Quick service snapshot for the whole system or one line: trains running, alerts in effect, and the most severe alerts" },
                 { name: "subway_alerts", description: "Official MTA subway service alerts, most severe first, with alert type, severity, affected lines, and active period" },
-                { name: "station_transfers", description: "List the stations connected to a subway station by free in-system transfers" },
-                { name: "nearest_station", description: "Find the subway stations closest to GPS coordinates" },
+                { name: "station_transfers", description: "Lines a rider can reach at a station without leaving the system" },
+                { name: "nearest_station", description: "Find the subway stations closest to GPS coordinates, with daytime lines and accessibility" },
                 { name: "service_disruptions", description: "Is subway service disrupted right now? Overall status, counts by severity, and each disruption with affected lines and stations" },
                 { name: "elevator_and_escalator_status", description: "Elevator and escalator outages at subway stations, with estimated return and the MTA's suggested alternative route" }
             ],
@@ -317,6 +318,7 @@ app.listen(PORT, () => {
     }));
 
     startPolling();
+    ensureStationInfoLoaded();
 
     ensureStationLineDataLoaded().then(() => {
         console.log(JSON.stringify({

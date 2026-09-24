@@ -46,11 +46,20 @@ const standardResponseShape = (dataSchema: z.ZodTypeAny) => ({
 // Tool-specific data shapes. All-optional + passthrough keeps the schema useful
 // without breaking when handlers add fields or return error-shape data (null /
 // {query} on failure).
+const stationSummarySchema = z.object({
+  name: z.string(),
+  stopIds: z.array(z.string()),
+  lines: z.array(z.string()),
+  borough: z.string().nullable(),
+  accessibility: z.enum(["full", "partial", "none"]).nullable(),
+  accessibilityNotes: z.string().nullable()
+}).passthrough();
+
 const findStationOutputSchema = standardResponseShape(
   z.object({
     searchQuery: z.string().optional(),
     stationsFound: z.number().optional(),
-    stations: z.array(z.unknown()).optional(),
+    stations: z.array(stationSummarySchema).optional(),
     timestamp: z.number().optional(),
     query: z.string().optional()
   }).passthrough().nullable()
@@ -59,14 +68,23 @@ const findStationOutputSchema = standardResponseShape(
 const nextTrainsOutputSchema = standardResponseShape(
   z.object({
     station: z.string().optional(),
+    stopIds: z.array(z.string()).optional(),
+    lines: z.array(z.string()).optional(),
+    availableDirections: z.array(z.string()).optional(),
+    directionNote: z.string().optional(),
     arrivals: z.array(z.object({
       line: z.string().optional(),
+      direction: z.string().nullable().optional(),
       destination: z.string().nullable().optional(),
       arrivalTimestamp: z.number().nullable().optional(),
       station: z.string().optional(),
+      stopId: z.string().optional(),
       tripId: z.string().optional()
     }).passthrough()).optional(),
     count: z.number().optional(),
+    ambiguous: z.boolean().optional(),
+    options: z.array(stationSummarySchema).optional(),
+    unavailableFeeds: z.array(z.string()).optional(),
     query: z.string().optional()
   }).passthrough().nullable()
 );
@@ -110,7 +128,12 @@ const subwayAlertsOutputSchema = standardResponseShape(
 const stationTransfersOutputSchema = standardResponseShape(
   z.object({
     station: z.string().optional(),
-    transfers: z.array(z.string()).optional(),
+    lines: z.array(z.string()).optional(),
+    connections: z.array(z.object({
+      name: z.string(),
+      stopId: z.string(),
+      lines: z.array(z.string())
+    })).optional(),
     query: z.string().optional()
   }).passthrough().nullable()
 );
@@ -192,7 +215,8 @@ function logToolResult(toolName: string, result: ToolResponse): void {
     else if (data?.alerts) summary = `${data.total} alert(s)`;
     else if (data?.disruptions) summary = `${data.systemStatus}, ${data.disruptions.length} disruption(s)`;
     else if (data?.outages) summary = `${data.total} outage(s)`;
-    else if (data?.transfers) summary = `${data.transfers.length} transfer(s)`;
+    else if (data?.ambiguous) summary = `ambiguous: ${data.options.length} station(s)`;
+    else if (data?.connections) summary = `${data.lines.length} line(s)`;
     else if (data?.activeTrips !== undefined) summary = `${data.activeTrips} trip(s), ${data.activeAlerts} alert(s)`;
     else summary = "ok";
 
@@ -337,7 +361,7 @@ export function createMcpServer() {
     "find_station",
     {
       title: "Find Station",
-      description: "Search for subway stations by name with fuzzy matching and relevance scoring",
+      description: "Search for subway stations by name. Returns one entry per station complex with its stop IDs (usable as next_trains stop_id), daytime lines, borough, and wheelchair accessibility",
       inputSchema: {
         query: z.string().describe("Station name or partial name to search for")
       },
@@ -369,12 +393,13 @@ export function createMcpServer() {
     "next_trains",
     {
       title: "Next Trains",
-      description: "Real-time train arrivals at a station from live MTA feeds: line, destination, and predicted arrival time (Unix ms) for the soonest trains",
+      description: "Real-time train arrivals at a station from live MTA feeds: line, direction (the MTA platform label, e.g. \"Uptown\", \"Manhattan\", \"Coney Island\"), destination, and predicted arrival time (Unix ms). If a name matches several different stations (e.g. \"23 St\"), returns ambiguous=true with options instead of arrivals — ask the rider which one, then call again with stop_id",
       inputSchema: {
-        station: z.string().describe("Station name to get arrivals for"),
-        direction: z.enum(["uptown", "downtown", "manhattan", "brooklyn", "queens", "bronx"]).optional().describe("Filter by direction"),
-        limit: z.number().optional().describe("Maximum number of arrivals to return"),
-        line: z.string().optional().describe("Filter by specific train line")
+        station: z.string().optional().describe("Station name to get arrivals for"),
+        stop_id: z.string().optional().describe("GTFS stop ID from find_station/nearest_station (e.g. \"635\"); takes precedence over station"),
+        direction: z.string().optional().describe("Direction as riders say it: \"uptown\", \"downtown\", \"manhattan\", \"brooklyn\", \"queens\", \"bronx\", a terminal like \"coney island\", or \"north\"/\"south\". Matched against each platform's MTA label"),
+        limit: z.number().optional().describe("Maximum number of arrivals to return (default 5, max 10)"),
+        line: z.string().optional().describe("Filter by line, e.g. \"6\" (includes 6X express), \"S\" for shuttles")
       },
       outputSchema: nextTrainsOutputSchema,
       annotations: {
@@ -471,7 +496,7 @@ export function createMcpServer() {
     "station_transfers",
     {
       title: "Station Transfers",
-      description: "List the stations connected to a subway station by free in-system transfers",
+      description: "Lines a rider can reach at a station without leaving the system: all daytime lines at the station complex, and each connected platform with its lines",
       inputSchema: {
         station: z.string().describe("Station name to find transfers for")
       },
@@ -503,14 +528,14 @@ export function createMcpServer() {
     "nearest_station",
     {
       title: "Nearest Station",
-      description: "Find the subway stations closest to GPS coordinates, sorted by straight-line distance in meters. Requires lat/lon — convert addresses or landmarks to coordinates first",
+      description: "Find the subway stations closest to GPS coordinates, sorted by straight-line distance in meters, with daytime lines and wheelchair accessibility. Requires lat/lon — convert addresses or landmarks to coordinates first",
       inputSchema: {
         lat: z.number().optional().describe("Latitude coordinate (required)"),
         lon: z.number().optional().describe("Longitude coordinate (required)"),
         limit: z.number().optional().describe("Maximum number of stations to return"),
         radius: z.number().optional().describe("Search radius in meters"),
-        accessible_only: z.boolean().optional().describe("Return only wheelchair accessible stations"),
-        service_filter: z.array(z.string()).optional().describe("Only return stations served by specific lines")
+        accessible_only: z.boolean().optional().describe("Only stations with full or partial wheelchair access (check accessibilityNotes for partial)"),
+        service_filter: z.array(z.string()).optional().describe("Only stations served by any of these lines (daytime service)")
       },
       outputSchema: nearestStationOutputSchema,
       annotations: {
