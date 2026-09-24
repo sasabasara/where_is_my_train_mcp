@@ -171,13 +171,29 @@ export interface StationGroup {
   matchType: StationMatch['matchType'];
 }
 
+export interface StationInfo {
+  stopId: string;
+  complexId: string;
+  name: string;
+  borough: string;
+  /** Daytime routes as the MTA labels them: "1", "A", "S" (shuttles), "SIR" */
+  routes: string[];
+  northLabel: string;
+  southLabel: string;
+  accessibility: 'full' | 'partial' | 'none';
+  accessibilityNotes: string | null;
+  lat: number;
+  lon: number;
+}
+
 export interface FindStationArgs {
   query: string;
 }
 
 export interface NextTrainsArgs {
-  station: string;
-  direction?: 'uptown' | 'downtown' | 'manhattan' | 'brooklyn' | 'queens' | 'bronx';
+  station?: string;
+  stop_id?: string;
+  direction?: string;
   limit?: number;
   line?: string;
 }
