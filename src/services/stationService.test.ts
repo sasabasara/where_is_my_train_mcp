@@ -56,8 +56,8 @@ describe('StationMatcher.normalizeStationName', () => {
     expect(StationMatcher.normalizeStationName('')).toBe('');
   });
 
-  it('does NOT replace "st" inside "1st"', () => {
-    expect(StationMatcher.normalizeStationName('1st Avenue')).toBe('1st avenue');
+  it('strips ordinals instead of turning "1st" into "1street"', () => {
+    expect(StationMatcher.normalizeStationName('1st Avenue')).toBe('1 avenue');
   });
 
   it('normalizes "Blvd" to "boulevard"', () => {
@@ -69,7 +69,40 @@ describe('StationMatcher.normalizeStationName', () => {
   });
 });
 
+describe('StationMatcher.normalizeStationName — rider phrasing', () => {
+  it.each([
+    ['34th Street', '34 street'],
+    ['42nd St', '42 street'],
+    ['Atlantic Ave', 'atlantic avenue'],
+    ['Jackson Heights', 'jackson heights'],
+    ['Jackson Hts-Roosevelt Av', 'jackson heights roosevelt avenue'],
+    ['W 4 St-Wash Sq', 'west 4 street washington square'],
+    ['West 4th St', 'west 4 street'],
+    ['47-50 Sts-Rockefeller Ctr', '47 50 sts rockefeller center'],
+    ['42 St-Bryant Pk', '42 street bryant park'],
+  ])('%s → %s', (input, expected) => {
+    expect(StationMatcher.normalizeStationName(input)).toBe(expected);
+  });
+});
+
 describe('StationMatcher.findBestMatches', () => {
+  it('matches "34th street" to the 34 St stations', () => {
+    const names = StationMatcher.findBestMatches('34th street', mockStops).map(m => m.stop_name);
+    expect(names).toEqual(expect.arrayContaining(['34 St-Herald Sq', '34 St-Penn Station']));
+  });
+
+  it('does not match a query inside a longer number ("42 st" vs "242 St")', () => {
+    const stops = [...mockStops, { stop_id: '101', stop_name: 'Van Cortlandt Park-242 St', location_type: '1', parent_station: '', stop_lat: '0', stop_lon: '0' }];
+    const names = StationMatcher.findBestMatches('42nd st', stops).map(m => m.stop_name);
+    expect(names).not.toContain('Van Cortlandt Park-242 St');
+    expect(names).toContain('42 St-Bryant Pk');
+  });
+
+  it('allows partial matching for 3-letter queries like "lex"', () => {
+    const names = StationMatcher.findBestMatches('lex', mockStops).map(m => m.stop_name);
+    expect(names).toEqual(expect.arrayContaining(['Lexington Av/53 St', 'Lexington Av/59 St']));
+  });
+
   // --- Basic matching ---
 
   it('finds exact case-insensitive match with score 100', () => {
@@ -147,7 +180,7 @@ describe('StationMatcher.findBestMatches', () => {
 
   // --- Short queries ---
 
-  it('does not do partial matching for short queries (≤3 chars)', () => {
+  it('does not do partial matching for short numeric queries', () => {
     const matches = StationMatcher.findBestMatches('23', mockStops);
     expect(matches).toEqual([]);
   });

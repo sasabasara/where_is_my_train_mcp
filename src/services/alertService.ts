@@ -1,4 +1,5 @@
 import { fetchMTAAlerts } from './mtaService.js';
+import { routeMatchesLine } from './stationInfoService.js';
 import type { AlertSeverity, AlertCategory, SubwayAlert } from '../types/index.js';
 
 // MTA Mercury priorities (gtfs-realtime-service-status.proto, MercuryEntitySelector.Priority).
@@ -83,18 +84,46 @@ export interface AlertFilters {
 }
 
 /**
+ * The MTA splits one incident into one entity per priority, e.g. "lmm:alert:268751:34"
+ * (2 train, Part Suspended) and "lmm:alert:268751:26" (5 train, Delays), same text.
+ * Merge them so riders see one alert covering all its lines, at its highest severity.
+ */
+export function mergeSplitAlerts(alerts: SubwayAlert[]): SubwayAlert[] {
+  const merged = new Map<string, SubwayAlert>();
+  for (const alert of alerts) {
+    const key = alert.id.match(/^(lmm:alert:\d+):\d+$/)?.[1] ?? alert.id;
+    const existing = merged.get(key);
+    if (!existing) {
+      merged.set(key, { ...alert, id: key });
+      continue;
+    }
+    const [primary, secondary] = alert.priority > existing.priority ? [alert, existing] : [existing, alert];
+    merged.set(key, {
+      ...primary,
+      id: key,
+      affectedLines: [...new Set([...primary.affectedLines, ...secondary.affectedLines])],
+      affectedStopIds: [...new Set([...primary.affectedStopIds, ...secondary.affectedStopIds])],
+      isActive: primary.isActive || secondary.isActive
+    });
+  }
+  return [...merged.values()];
+}
+
+/**
  * Parsed subway alerts, most severe first (by MTA priority, then most recently updated).
  */
 export async function getSubwayAlerts(filters: AlertFilters = {}): Promise<SubwayAlert[]> {
   const feed = await fetchMTAAlerts();
   const now = Date.now();
-  const line = filters.line?.trim().toUpperCase();
+  const line = filters.line?.trim();
 
-  return feed.entity
+  const parsed = feed.entity
     .map((e: any) => parseAlert(e, now))
-    .filter((a: SubwayAlert | null): a is SubwayAlert => a !== null)
+    .filter((a: SubwayAlert | null): a is SubwayAlert => a !== null);
+
+  return mergeSplitAlerts(parsed)
     .filter((a: SubwayAlert) => !filters.activeOnly || a.isActive)
-    .filter((a: SubwayAlert) => !line || a.affectedLines.includes(line))
+    .filter((a: SubwayAlert) => !line || a.affectedLines.some(route => routeMatchesLine(route, line)))
     .filter((a: SubwayAlert) => !filters.severity || filters.severity === 'ALL' || a.severity === filters.severity)
     .filter((a: SubwayAlert) => !filters.category || filters.category === 'ALL' || a.category === filters.category)
     .sort((a: SubwayAlert, b: SubwayAlert) => b.priority - a.priority || (b.updatedAt ?? 0) - (a.updatedAt ?? 0));

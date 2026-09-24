@@ -27,15 +27,31 @@ const MAJOR_HUBS = new Set([
   'broadway junction',
 ]);
 
+// Whole-query nicknames riders use that don't appear in GTFS names
+const QUERY_ALIASES: Record<string, string> = {
+  'wtc': 'world trade center'
+};
+
 export class StationMatcher {
+  /**
+   * Applied to both the query and GTFS names, so "34th street", "W 4th St" and
+   * "Jackson Heights" line up with "34 St", "W 4 St-Wash Sq" and "Jackson Hts".
+   */
   static normalizeStationName(name: string): string {
     return name.toLowerCase()
       .trim()
-      .replace(/\bav\b/g, 'avenue')
+      .replace(/\b(\d+)(st|nd|rd|th)\b/g, '$1')
+      .replace(/\bave?\b/g, 'avenue')
       .replace(/\bst\b/g, 'street')
       .replace(/\bpkwy\b/g, 'parkway')
       .replace(/\bblvd\b/g, 'boulevard')
       .replace(/\bsq\b/g, 'square')
+      .replace(/\bctr\b/g, 'center')
+      .replace(/\bpk\b/g, 'park')
+      .replace(/\bhts\b/g, 'heights')
+      .replace(/\bwash\b/g, 'washington')
+      .replace(/^w\b/, 'west')
+      .replace(/^e\b/, 'east')
       .replace(/[\-\/]/g, ' ')
       .replace(/[\(\)]/g, '')
       .replace(/\s+/g, ' ')
@@ -43,6 +59,7 @@ export class StationMatcher {
   }
 
   static findBestMatches(query: string, stops: any[]): StationMatch[] {
+    query = QUERY_ALIASES[query.toLowerCase().trim()] ?? query;
     const normalizedQuery = this.normalizeStationName(query);
     const originalQuery = query.toLowerCase().trim();
 
@@ -67,7 +84,8 @@ export class StationMatcher {
       } else if (normalizedStop === normalizedQuery) {
         score = 90 + hubBonus;
         matchType = 'normalized';
-      } else if (normalizedQuery.length > 3) {
+      } else if (normalizedQuery.length > 3 || (normalizedQuery.length === 3 && /[a-z]/.test(normalizedQuery))) {
+        // Partial matching needs 4+ chars, or 3 letters ("jfk"); bare numbers like "23" would match everything
         const words = normalizedStop.split(' ');
         if (words.some(word => word === normalizedQuery)) {
           score = 70 + hubBonus;
@@ -75,7 +93,8 @@ export class StationMatcher {
         } else if (normalizedStop.startsWith(normalizedQuery)) {
           score = 60 + hubBonus;
           matchType = 'partial_starts';
-        } else if (normalizedStop.includes(normalizedQuery)) {
+        } else if (` ${normalizedStop}`.includes(` ${normalizedQuery}`)) {
+          // Word-start only: "42 street" must not match "Van Cortlandt Park-242 St"
           score = 50 + hubBonus;
           matchType = 'partial_contains';
         }
@@ -87,6 +106,7 @@ export class StationMatcher {
           stop_name: stop.stop_name,
           score,
           matchType,
+          isHub,
           location_type: stop.location_type,
           parent_station: stop.parent_station ?? '',
           stop_lat: stop.stop_lat ?? '',

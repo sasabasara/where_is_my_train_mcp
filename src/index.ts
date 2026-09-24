@@ -71,11 +71,12 @@ const nextTrainsOutputSchema = standardResponseShape(
     stopIds: z.array(z.string()).optional(),
     lines: z.array(z.string()).optional(),
     availableDirections: z.array(z.string()).optional(),
-    directionNote: z.string().optional(),
+    note: z.string().optional(),
     arrivals: z.array(z.object({
       line: z.string().optional(),
       direction: z.string().nullable().optional(),
       destination: z.string().nullable().optional(),
+      destinationBorough: z.string().nullable().optional(),
       arrivalTimestamp: z.number().nullable().optional(),
       station: z.string().optional(),
       stopId: z.string().optional(),
@@ -393,12 +394,12 @@ export function createMcpServer() {
     "next_trains",
     {
       title: "Next Trains",
-      description: "Real-time train arrivals at a station from live MTA feeds: line, direction (the MTA platform label, e.g. \"Uptown\", \"Manhattan\", \"Coney Island\"), destination, and predicted arrival time (Unix ms). If a name matches several different stations (e.g. \"23 St\"), returns ambiguous=true with options instead of arrivals — ask the rider which one, then call again with stop_id",
+      description: "Real-time train arrivals at a station from live MTA feeds: line, direction (the MTA platform label, e.g. \"Uptown\", \"Manhattan\", \"Coney Island\"), destination, and predicted arrival time (Unix ms). Trains that end their run at the station are excluded. If a name matches several different stations (e.g. \"23 St\"), returns ambiguous=true with options instead of arrivals — ask the rider which one, then call again with stop_id",
       inputSchema: {
         station: z.string().optional().describe("Station name to get arrivals for"),
         stop_id: z.string().optional().describe("GTFS stop ID from find_station/nearest_station (e.g. \"635\"); takes precedence over station"),
-        direction: z.string().optional().describe("Direction as riders say it: \"uptown\", \"downtown\", \"manhattan\", \"brooklyn\", \"queens\", \"bronx\", a terminal like \"coney island\", or \"north\"/\"south\". Matched against each platform's MTA label"),
-        limit: z.number().optional().describe("Maximum number of arrivals to return (default 5, max 10)"),
+        direction: z.string().optional().describe("Direction as riders say it: \"uptown\", \"downtown\", \"manhattan\", \"brooklyn\", \"queens\", \"bronx\", a terminal like \"coney island\", or \"north\"/\"south\". Matched against the MTA platform label, the train's destination, and the destination's borough"),
+        limit: z.number().optional().describe("Maximum number of arrivals to return (1-10, default 5)"),
         line: z.string().optional().describe("Filter by line, e.g. \"6\" (includes 6X express), \"S\" for shuttles")
       },
       outputSchema: nextTrainsOutputSchema,
@@ -532,7 +533,7 @@ export function createMcpServer() {
       inputSchema: {
         lat: z.number().optional().describe("Latitude coordinate (required)"),
         lon: z.number().optional().describe("Longitude coordinate (required)"),
-        limit: z.number().optional().describe("Maximum number of stations to return"),
+        limit: z.number().optional().describe("Maximum number of stations to return (1-20, default 5)"),
         radius: z.number().optional().describe("Search radius in meters"),
         accessible_only: z.boolean().optional().describe("Only stations with full or partial wheelchair access (check accessibilityNotes for partial)"),
         service_filter: z.array(z.string()).optional().describe("Only stations served by any of these lines (daytime service)")

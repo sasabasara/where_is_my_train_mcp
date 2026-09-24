@@ -219,5 +219,31 @@
     "ada_notes": null,
     "gtfs_latitude": "40.755983",
     "gtfs_longitude": "-73.986229"
+  },
+  {
+    "gtfs_stop_id": "D43",
+    "complex_id": "58",
+    "stop_name": "Coney Island-Stillwell Av",
+    "borough": "Bk",
+    "daytime_routes": "D F N Q",
+    "north_direction_label": "Manhattan",
+    "south_direction_label": "Last Stop",
+    "ada": "1",
+    "ada_notes": null,
+    "gtfs_latitude": "40.577422",
+    "gtfs_longitude": "-73.981233"
+  },
+  {
+    "gtfs_stop_id": "401",
+    "complex_id": "378",
+    "stop_name": "Woodlawn",
+    "borough": "Bx",
+    "daytime_routes": "4",
+    "north_direction_label": "Last Stop",
+    "south_direction_label": "Manhattan",
+    "ada": "0",
+    "ada_notes": null,
+    "gtfs_latitude": "40.886037",
+    "gtfs_longitude": "-73.878751"
   }
 ]

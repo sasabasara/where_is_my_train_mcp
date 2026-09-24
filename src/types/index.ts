@@ -21,6 +21,7 @@ export interface StationMatch {
   stop_name: string;
   score: number;
   matchType: 'exact' | 'normalized' | 'partial_word' | 'partial_starts' | 'partial_contains';
+  isHub: boolean;
   location_type: string;
   parent_station: string;
   stop_lat: string;
