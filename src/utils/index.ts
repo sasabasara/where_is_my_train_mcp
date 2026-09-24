@@ -1,6 +1,4 @@
-import { StationMapper } from "../services/stationMapper.js";
-
-const stationMapper = new StationMapper();
+import { getStopName } from "../services/stationService.js";
 
 export function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371000;
@@ -13,7 +11,7 @@ export function calculateDistance(lat1: number, lon1: number, lat2: number, lon2
   return R * c;
 }
 
-export async function getTrainDestination(stopTimeUpdates: any[]): Promise<string> {
+export function getTrainDestination(stopTimeUpdates: any[]): string {
   const lastStop = stopTimeUpdates[stopTimeUpdates.length - 1];
-  return lastStop ? await stationMapper.getStationName(lastStop.stopId) : 'Unknown destination';
+  return lastStop?.stopId ? getStopName(lastStop.stopId) : 'Unknown destination';
 }

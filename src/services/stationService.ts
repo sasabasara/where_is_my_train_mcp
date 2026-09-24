@@ -3,11 +3,13 @@ import type { StationMatch, StationGroup } from "../types/index.js";
 
 let stopsData: any[] = [];
 let transfersData: any[] = [];
-let routesData: any[] = [];
+let stopsById = new Map<string, any>();
 let lastLoadedAt = 0;
-const REFRESH_INTERVAL_MS = 50 * 60 * 1000; // 50 minutes, matches supplemented GTFS TTL
-
-let currentGTFSSource: 'local' | 'supplemented' | 'regular' = 'local';
+let lastAttemptAt = 0;
+let loading: Promise<void> | null = null;
+// The disk cache refreshes weekly; checking daily keeps long-lived Railway processes current
+const REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const RETRY_AFTER_FAILURE_MS = 5 * 60 * 1000;
 
 const MAJOR_HUBS = new Set([
   'times sq-42 st',
@@ -141,47 +143,41 @@ export class StationMatcher {
 }
 
 
-export async function ensureDataLoaded() {
-  if (lastLoadedAt > 0 && (Date.now() - lastLoadedAt) < REFRESH_INTERVAL_MS) {
-    return;
-  }
+/**
+ * Load static GTFS (stops, transfers) once, refresh daily. Concurrent callers share one load.
+ * If a refresh fails, previously loaded data keeps being served; only a first load failure throws.
+ */
+export async function ensureDataLoaded(): Promise<void> {
+  const now = Date.now();
+  if (lastLoadedAt > 0 && now - lastLoadedAt < REFRESH_INTERVAL_MS) return;
+  if (lastLoadedAt > 0 && now - lastAttemptAt < RETRY_AFTER_FAILURE_MS) return;
 
+  loading ??= load().finally(() => { loading = null; });
+  return loading;
+}
+
+async function load(): Promise<void> {
   const isRefresh = lastLoadedAt > 0;
+  lastAttemptAt = Date.now();
 
   try {
-    try {
-      const supplementedData = await GTFSManager.getGTFSData('supplemented');
-      stopsData = supplementedData.stops;
-      transfersData = supplementedData.transfers;
-      routesData = supplementedData.routes;
-      currentGTFSSource = 'supplemented';
-      lastLoadedAt = Date.now();
-      if (isRefresh) {
-        console.log(JSON.stringify({ event: "gtfs_refreshed", timestamp: new Date().toISOString(), source: currentGTFSSource }));
-      }
-      return;
-    } catch (error) {
-      console.warn('Supplemented GTFS unavailable, trying regular GTFS:', error);
-    }
+    const { stops, transfers } = await GTFSManager.getGTFSData();
+    if (stops.length === 0) throw new Error('stops.txt is empty');
 
-    try {
-      const regularData = await GTFSManager.getGTFSData('regular');
-      stopsData = regularData.stops;
-      transfersData = regularData.transfers;
-      routesData = regularData.routes;
-      currentGTFSSource = 'regular';
-      lastLoadedAt = Date.now();
-      if (isRefresh) {
-        console.log(JSON.stringify({ event: "gtfs_refreshed", timestamp: new Date().toISOString(), source: currentGTFSSource }));
-      }
-      return;
-    } catch (error) {
-      console.error('Regular GTFS unavailable');
-      throw new Error('Failed to load GTFS data from both supplemented and regular sources');
+    stopsData = stops;
+    transfersData = transfers;
+    stopsById = new Map(stops.map(stop => [stop.stop_id, stop]));
+    lastLoadedAt = Date.now();
+
+    if (isRefresh) {
+      console.log(JSON.stringify({ event: "gtfs_refreshed", timestamp: new Date().toISOString() }));
     }
   } catch (error) {
-    console.error('Error loading GTFS data occurred');
-    throw new Error('GTFS data loading failed');
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(JSON.stringify({ event: "gtfs_load_failed", timestamp: new Date().toISOString(), servingStale: isRefresh, error: message }));
+    if (!isRefresh) {
+      throw new Error('GTFS data loading failed');
+    }
   }
 }
 
@@ -193,9 +189,7 @@ export function getTransfersData(): any[] {
   return transfersData;
 }
 
-export async function getGTFSSourceInfo(): Promise<{ source: string; status: any }> {
-  return {
-    source: currentGTFSSource,
-    status: await GTFSManager.getCacheStatus()
-  };
+/** Stop or station name for a GTFS stop ID (platform IDs like "635N" included); falls back to the ID. */
+export function getStopName(stopId: string): string {
+  return stopsById.get(stopId)?.stop_name ?? stopId;
 }

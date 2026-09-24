@@ -1,7 +1,5 @@
 import protobuf from "protobufjs";
 
-let gtfsRootPromise: Promise<protobuf.Root>;
-
 const MTA_FEEDS = {
   'nqrw': 'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-nqrw',
   '1234567s': 'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs',
@@ -13,24 +11,19 @@ const MTA_FEEDS = {
   'si': 'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-si'
 };
 
-const initializeGTFS = (): Promise<protobuf.Root> => {
-  if (!gtfsRootPromise) {
-    gtfsRootPromise = protobuf.load(["src/schemas/gtfs-realtime.proto", "src/schemas/nyct-subway.proto"]);
-  }
-  return gtfsRootPromise;
-};
+const gtfsRootPromise: Promise<protobuf.Root> = protobuf.load([
+  "src/schemas/gtfs-realtime.proto",
+  "src/schemas/nyct-subway.proto"
+]);
 
-// Initialize the promise on module load
-gtfsRootPromise = initializeGTFS();
-
-// Simple in-memory cache
 let cachedData: any = null;
 let lastFetchTime = 0;
+let inFlight: Promise<any> | null = null;
 const CACHE_DURATION_MS = 30000; // 30 seconds
 
-export function getCachedData() {
-  return cachedData;
-}
+// Last successful response per feed, used when that feed fails on a later fetch
+const lastGoodFeeds: Record<string, { entity: any[]; header: any; fetchedAt: number }> = {};
+const MAX_FEED_STALENESS_MS = 5 * 60 * 1000;
 
 async function fetchSingleFeed(url: string) {
   const root = await gtfsRootPromise;
@@ -80,18 +73,26 @@ async function fetchSingleFeed(url: string) {
   }
 }
 
+/**
+ * All 8 subway GTFS-RT feeds combined. Cached for 30s; concurrent callers share one fetch.
+ * A feed that fails falls back to its last good data (up to 5 minutes old); feeds with no
+ * usable data are listed in feedStatus.failedFeeds. Throws only if no feed has data.
+ */
 export async function fetchMTAData(forceRefresh = false) {
-  // Return cached data if valid and not forcing refresh
   if (!forceRefresh && cachedData && (Date.now() - lastFetchTime < CACHE_DURATION_MS)) {
     return cachedData;
   }
 
-  const feedKeys = Object.keys(MTA_FEEDS);
-  const feedUrls = Object.values(MTA_FEEDS);
+  inFlight ??= fetchAllFeeds().finally(() => { inFlight = null; });
+  return inFlight;
+}
 
+async function fetchAllFeeds() {
+  const feedKeys = Object.keys(MTA_FEEDS);
   const allFeeds = await Promise.allSettled(
-    feedUrls.map(url => fetchSingleFeed(url))
+    Object.values(MTA_FEEDS).map(url => fetchSingleFeed(url))
   );
+  const now = Date.now();
 
   const combinedData = {
     entity: [] as any[],
@@ -99,34 +100,44 @@ export async function fetchMTAData(forceRefresh = false) {
     feedStatus: {
       successful: 0,
       failed: 0,
-      failedFeeds: [] as string[]
+      failedFeeds: [] as string[],
+      staleFeeds: [] as string[]
     }
   };
 
   allFeeds.forEach((result, index) => {
     const feedName = feedKeys[index];
+    let feed: { entity: any[]; header: any } | null = null;
+
     if (result.status === 'fulfilled') {
-      const feedData = result.value;
-      if (feedData && feedData.entity) {
-        combinedData.entity.push(...feedData.entity);
-        combinedData.feedStatus.successful++;
-      }
-      if (!combinedData.header && feedData.header) {
-        combinedData.header = feedData.header;
-      }
+      feed = { entity: result.value.entity, header: result.value.header };
+      lastGoodFeeds[feedName] = { ...feed, fetchedAt: now };
+      combinedData.feedStatus.successful++;
     } else {
       combinedData.feedStatus.failed++;
-      combinedData.feedStatus.failedFeeds.push(feedName);
-      console.error(`Failed to fetch feed ${feedName}`);
+      console.error(`Failed to fetch feed ${feedName}: ${result.reason?.message ?? result.reason}`);
+
+      const lastGood = lastGoodFeeds[feedName];
+      if (lastGood && now - lastGood.fetchedAt < MAX_FEED_STALENESS_MS) {
+        feed = lastGood;
+        combinedData.feedStatus.staleFeeds.push(feedName);
+      } else {
+        combinedData.feedStatus.failedFeeds.push(feedName);
+      }
+    }
+
+    if (feed) {
+      combinedData.entity.push(...feed.entity);
+      combinedData.header ??= feed.header;
     }
   });
 
+  if (combinedData.feedStatus.failedFeeds.length === feedKeys.length) {
+    throw new Error('All MTA real-time feeds unavailable');
+  }
 
-
-  // Update cache
   cachedData = combinedData;
-  lastFetchTime = Date.now();
-
+  lastFetchTime = now;
   return combinedData;
 }
 

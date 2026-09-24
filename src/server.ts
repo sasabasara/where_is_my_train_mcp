@@ -4,7 +4,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { createMcpServer } from "./index.js";
 import { startPolling } from "./services/pollingService.js";
-import { ensureStationLineDataLoaded } from "./services/gtfsLineResolver.js";
+import { ensureDataLoaded } from "./services/stationService.js";
 import { ensureStationInfoLoaded } from "./services/stationInfoService.js";
 import { randomUUID } from "crypto";
 
@@ -320,7 +320,7 @@ app.listen(PORT, () => {
     startPolling();
     ensureStationInfoLoaded();
 
-    ensureStationLineDataLoaded().then(() => {
+    ensureDataLoaded().then(() => {
         console.log(JSON.stringify({
             event: "gtfs_loaded",
             timestamp: new Date().toISOString(),

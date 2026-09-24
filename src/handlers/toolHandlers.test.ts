@@ -26,7 +26,7 @@ vi.mock('../services/stationService.js', () => ({
   ensureDataLoaded: vi.fn(async () => {}),
   getStopsData: () => [{ stop_id: 'S22', stop_name: 'New Dorp', location_type: '1', parent_station: '', stop_lat: '0', stop_lon: '0' }],
   getTransfersData: () => [],
-  getGTFSSourceInfo: vi.fn(),
+  getStopName: (id: string) => (id === 'S22' ? 'New Dorp' : id),
   StationMatcher: {}
 }));
 
