@@ -8,12 +8,19 @@ Live NYC subway info for Claude and other AI assistants: arrivals, delays, eleva
 
 ## Connect
 
-No API key needed.
+No install, no API key. The server is hosted at:
 
+```
+https://whereismytrainmcp-production.up.railway.app/mcp
+```
+
+- **Claude (web, desktop, mobile):** add it as a [custom connector](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp) with the URL above.
+- **Claude Code:**
+  ```bash
+  claude mcp add --transport http where-is-my-train https://whereismytrainmcp-production.up.railway.app/mcp
+  ```
+- **Other MCP clients:** use the URL as a Streamable HTTP server.
 - **Smithery:** [smithery.ai/servers/sasabasara/where_is_my_train_mcp](https://smithery.ai/servers/sasabasara/where_is_my_train_mcp)
-- **Self-hosted:** run it yourself (below), then point your client at `http://localhost:3000/mcp`:
-  - **Claude Code:** `claude mcp add --transport http where-is-my-train http://localhost:3000/mcp`
-  - **Other MCP clients:** add the URL as a Streamable HTTP server.
 
 ## Ask it things like
 
