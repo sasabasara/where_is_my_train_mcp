@@ -142,16 +142,24 @@ describe('next_trains', () => {
 
   it('explains an empty result, including a line that does not stop there', async () => {
     const b = payload(await handleNextTrains({ station: 'union sq', line: 'B' })).data;
-    expect(b.note).toMatch(/The B doesn't normally stop at 14 St-Union Sq/);
+    expect(b.note).toMatch(/The B isn't a daytime line at 14 St-Union Sq .*night and weekend service can differ/);
 
     const n = payload(await handleNextTrains({ station: 'times sq-42 st', line: 'N' })).data;
     expect(n.note).toMatch(/No upcoming N trains/);
-    expect(n.note).not.toMatch(/doesn't normally stop/);
+    expect(n.note).not.toMatch(/isn't a daytime line/);
   });
 
   it('clamps limit to 1-10', async () => {
     expect(payload(await handleNextTrains({ station: 'union sq', limit: -3 })).data.count).toBe(1);
     expect(payload(await handleNextTrains({ station: 'union sq', limit: 500 })).data.count).toBeLessThanOrEqual(10);
+  });
+
+  it('offers every major hub on a numbered street ("42nd st" includes Grand Central)', async () => {
+    const { data } = payload(await handleNextTrains({ station: '42nd st' }));
+    expect(data.ambiguous).toBe(true);
+    const lines = data.options.map((o: any) => o.lines.join(''));
+    // Grand Central, Bryant Pk, Times Sq complex
+    expect(lines.sort()).toEqual(['1237ACENQRSW', '4567S', '7BDFM']);
   });
 
   it('understands ordinals and offers the major hubs ("34th street")', async () => {
