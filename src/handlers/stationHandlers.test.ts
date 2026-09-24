@@ -25,7 +25,7 @@ const trip = (routeId: string, tripId: string, stopId: string, minutes: number) 
 vi.mock('../services/mtaService.js', () => ({
   fetchMTAData: vi.fn(async () => ({
     entity: [
-      trip('6', 't1', '635N', 2),
+      { ...trip('6', 't1', '635N', 2), tripUpdate: { ...trip('6', 't1', '635N', 2).tripUpdate, trip: { routeId: '6', tripId: 't1', '.nyctTripDescriptor': { isAssigned: true } } } },
       trip('6X', 't2', '635N', 4),
       trip('4', 't3', '635S', 3),
       trip('L', 't4', 'L03N', 5),
@@ -84,6 +84,11 @@ describe('next_trains', () => {
     expect(data.arrivals.find((a: any) => a.line === 'L')).toMatchObject({ direction: 'West Side', stopId: 'L03N' });
     // Directions of trains actually coming (no Brooklyn-bound L in this snapshot)
     expect(data.availableDirections.sort()).toEqual(['Downtown', 'Uptown', 'West Side']);
+  });
+
+  it('marks arrivals from dispatched trains as confirmed', async () => {
+    const { data } = payload(await handleNextTrains({ station: 'union sq', line: '6' }));
+    expect(data.arrivals.map((a: any) => [a.tripId, a.confirmed])).toEqual([['t1', true], ['t2', false]]);
   });
 
   it('line "6" includes the 6X express', async () => {
