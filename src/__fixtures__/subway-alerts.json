@@ -1,0 +1,518 @@
+{
+  "header": {
+    "gtfs_realtime_version": "2.0",
+    "incrementality": "FULL_DATASET",
+    "timestamp": 1790210217,
+    "transit_realtime.mercury_feed_header": {
+      "mercury_version": "1.0"
+    }
+  },
+  "entity": [
+    {
+      "id": "lmm:alert:268749:26",
+      "alert": {
+        "active_period": [
+          {
+            "start": 1790208715,
+            "end": 1790210700
+          }
+        ],
+        "informed_entity": [
+          {
+            "agency_id": "MTASBWY",
+            "route_id": "A",
+            "transit_realtime.mercury_entity_selector": {
+              "sort_order": "MTASBWY:A:26"
+            }
+          },
+          {
+            "agency_id": "MTASBWY",
+            "route_id": "C",
+            "transit_realtime.mercury_entity_selector": {
+              "sort_order": "MTASBWY:C:26"
+            }
+          },
+          {
+            "agency_id": "MTASBWY",
+            "route_id": "F",
+            "transit_realtime.mercury_entity_selector": {
+              "sort_order": "MTASBWY:F:26"
+            }
+          }
+        ],
+        "header_text": {
+          "translation": [
+            {
+              "text": "[A][C][F] trains are running with delays in both directions after we addressed a loss of third-rail power near Jay St-MetroTech.",
+              "language": "en"
+            },
+            {
+              "text": "<p>[A][C][F] trains are running with delays in both directions after we addressed a loss of third-rail power near <strong>Jay St-MetroTech</strong>.</p>",
+              "language": "en-html"
+            }
+          ]
+        },
+        "transit_realtime.mercury_alert": {
+          "created_at": 1790208715,
+          "updated_at": 1790209404,
+          "alert_type": "Delays",
+          "display_before_active": 0
+        }
+      }
+    },
+    {
+      "id": "lmm:alert:268751:34",
+      "alert": {
+        "active_period": [
+          {
+            "start": 1790209673
+          }
+        ],
+        "informed_entity": [
+          {
+            "agency_id": "MTASBWY",
+            "route_id": "2",
+            "transit_realtime.mercury_entity_selector": {
+              "sort_order": "MTASBWY:2:34"
+            }
+          },
+          {
+            "agency_id": "MTASBWY",
+            "route_id": "5",
+            "transit_realtime.mercury_entity_selector": {
+              "sort_order": "MTASBWY:5:34"
+            }
+          }
+        ],
+        "header_text": {
+          "translation": [
+            {
+              "text": "No [2][5] between Franklin Av-Medgar Evers College and Flatbush Av-Brooklyn College in both directions.\n[2][5] trains are running with delays in both directions.",
+              "language": "en"
+            },
+            {
+              "text": "<p>No [2][5] between <strong>Franklin Av-Medgar Evers College</strong> and <strong>Flatbush Av-Brooklyn College</strong> in both directions.</p><p>[2][5] trains are running with delays in both directions.</p>",
+              "language": "en-html"
+            }
+          ]
+        },
+        "description_text": {
+          "translation": [
+            {
+              "text": "What's Happening?\nEmergency teams are responding to someone struck by a train at Winthrop St.\n\nService Changes:\nNo [2][5] service between Franklin Av and Flatbush Av.\nFlatbush Av-bound [2][5] trains will be rerouted via the [3] line from Franklin Av to Utica Av or New Lots Av, where they will end. \nThe last stop on some downtown [2] trains will be Chambers St or Rector St (Via [1] line). \n\nListen for train crew announcements to hear how your train will run. \n\nTravel Alternatives:\nFor service between Franklin Av and Flatbush Av, use B44 SBS, B48, or B49 buses making nearby stops.\nIn Manhattan and Brooklyn, consider using [1][3][4][6] trains.",
+              "language": "en"
+            },
+            {
+              "text": "<p><strong>What's Happening?</strong></p><p>Emergency teams are responding to someone struck by a train at <strong>Winthrop St</strong>.</p><p style=\"min-height:10px\"></p><p><strong>Service Changes:</strong></p><p>No [2][5] service between Franklin Av and Flatbush Av.</p><p>Flatbush Av-bound [2][5] trains will be rerouted via the [3] line from <strong>Franklin Av</strong> to <strong>Utica Av</strong> or <strong>New Lots Av</strong>, where they will end. </p><p>The last stop on some downtown [2] trains will be <strong>Chambers St</strong> or <strong>Rector St</strong> (Via [1] line). </p><p style=\"min-height:10px\"></p><p>Listen for train crew announcements to hear how your train will run. </p><p style=\"min-height:10px\"></p><p><strong>Travel Alternatives:</strong></p><p>For service between <strong>Franklin Av</strong> and <strong>Flatbush Av</strong>, use <strong>B44 SBS, B48,</strong> or <strong>B49</strong> buses making nearby stops.</p><p>In Manhattan and Brooklyn, consider using [1][3][4][6] trains.  </p>",
+              "language": "en-html"
+            }
+          ]
+        },
+        "transit_realtime.mercury_alert": {
+          "created_at": 1790209673,
+          "updated_at": 1790210217,
+          "alert_type": "Part Suspended",
+          "display_before_active": 0
+        }
+      }
+    },
+    {
+      "id": "lmm:planned_work:35011",
+      "alert": {
+        "active_period": [
+          {
+            "start": 1790166600,
+            "end": 1805762217
+          }
+        ],
+        "informed_entity": [
+          {
+            "agency_id": "MTASBWY",
+            "route_id": "SI",
+            "stop_id": "S22",
+            "transit_realtime.mercury_entity_selector": {
+              "sort_order": "MTASBWY:SI:3"
+            }
+          }
+        ],
+        "header_text": {
+          "translation": [
+            {
+              "text": "[SIR] New Dorp Station - St George-bound - east end entrance is closed until further notice",
+              "language": "en"
+            },
+            {
+              "text": "<p>[SIR] <strong>New Dorp</strong><strong> </strong>Station - St George-bound - east end entrance is closed until further notice</p>",
+              "language": "en-html"
+            }
+          ]
+        },
+        "description_text": {
+          "translation": [
+            {
+              "text": "Note: The New Dorp Lane staircase and elevator can be used as an alternative. \n\nWhat's Happening?\nStation house repairs",
+              "language": "en"
+            },
+            {
+              "text": "<p><strong>Note:</strong> The New Dorp Lane staircase and elevator can be used as an alternative. </p><p></p><p><strong>What's Happening?</strong><br>Station house repairs</p>",
+              "language": "en-html"
+            }
+          ]
+        },
+        "transit_realtime.mercury_alert": {
+          "created_at": 1790178142,
+          "updated_at": 1790180432,
+          "alert_type": "Station Notice",
+          "display_before_active": 3600,
+          "human_readable_active_period": {
+            "translation": [
+              {
+                "text": "Ongoing",
+                "language": "en"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "lmm:planned_work:35016",
+      "alert": {
+        "active_period": [
+          {
+            "start": 1792813500,
+            "end": 1793005200
+          }
+        ],
+        "informed_entity": [
+          {
+            "agency_id": "MTASBWY",
+            "route_id": "H",
+            "stop_id": "H12",
+            "transit_realtime.mercury_entity_selector": {
+              "sort_order": "MTASBWY:H:21"
+            }
+          },
+          {
+            "agency_id": "MTASBWY",
+            "route_id": "H",
+            "stop_id": "H13",
+            "transit_realtime.mercury_entity_selector": {
+              "sort_order": "MTASBWY:H:21"
+            }
+          },
+          {
+            "agency_id": "MTASBWY",
+            "route_id": "H",
+            "stop_id": "H14",
+            "transit_realtime.mercury_entity_selector": {
+              "sort_order": "MTASBWY:H:21"
+            }
+          },
+          {
+            "agency_id": "MTASBWY",
+            "route_id": "H",
+            "stop_id": "H15",
+            "transit_realtime.mercury_entity_selector": {
+              "sort_order": "MTASBWY:H:21"
+            }
+          }
+        ],
+        "header_text": {
+          "translation": [
+            {
+              "text": "In Southeast Queens, [H] Rockaway Park Shuttle is replaced by free shuttle buses",
+              "language": "en"
+            },
+            {
+              "text": "<p>In Southeast Queens, [H] Rockaway Park Shuttle is replaced by free shuttle buses</p>",
+              "language": "en-html"
+            }
+          ]
+        },
+        "description_text": {
+          "translation": [
+            {
+              "text": "[shuttle bus icon] Free T351 shuttle buses make stops between Beach 67 St [A] and Rockaway Park-Beach 116 St.\n\nFor Broad Channel, take the [A].\nTransfer between [A] and [shuttle bus icon] buses at Beach 67 St [accessibility icon].\nWhat's happening?\nSignal maintenance",
+              "language": "en"
+            },
+            {
+              "text": "<p>[shuttle bus icon]Free <a title=\"\" href=\"https://bt.mta.info/?search=T351&amp;uuid=6cc05c6d-ee9d-4349-8840-72b565492592\" rel=\"noopener noreferrer nofollow\" data-link-auto=\"\" target=\"_blank\"><strong>T351</strong></a> shuttle buses make stops between <strong>Beach 67 St</strong> [A] and <strong>Rockaway Park-Beach 116 St</strong>.</p><p></p><p>For <strong>Broad Channel</strong>, take the [A].</p><ul><li><p>Transfer between [A] and [shuttle bus icon]buses at <strong>Beach 67 St</strong> [accessibility icon].</p></li></ul><p><strong>What's happening?</strong></p><p>Signal maintenance</p>",
+              "language": "en-html"
+            }
+          ]
+        },
+        "transit_realtime.mercury_alert": {
+          "created_at": 1790181293,
+          "updated_at": 1790185891,
+          "alert_type": "Planned - Suspended",
+          "station_alternative": [
+            {
+              "affected_entity": {
+                "agency_id": "MTASBWY",
+                "stop_id": "H06"
+              },
+              "notes": {
+                "translation": [
+                  {
+                    "text": "[accessibility icon] | [A]\n[shuttle bus icon] Rockaway Beach Blvd at Beach 67 St",
+                    "language": "en"
+                  },
+                  {
+                    "text": "<p>[accessibility icon] | [A]</p><p>[shuttle bus icon]Rockaway Beach Blvd at Beach 67 St</p>",
+                    "language": "en-html"
+                  }
+                ]
+              }
+            },
+            {
+              "affected_entity": {
+                "agency_id": "MTASBWY",
+                "stop_id": "H12"
+              },
+              "notes": {
+                "translation": [
+                  {
+                    "text": "[shuttle bus icon] Rockaway Beach Blvd at Beach 88 St",
+                    "language": "en"
+                  },
+                  {
+                    "text": "<p>[shuttle bus icon]Rockaway Beach Blvd at Beach 88 St</p>",
+                    "language": "en-html"
+                  }
+                ]
+              }
+            },
+            {
+              "affected_entity": {
+                "agency_id": "MTASBWY",
+                "stop_id": "H13"
+              },
+              "notes": {
+                "translation": [
+                  {
+                    "text": "[shuttle bus icon] Rockaway Beach Blvd at Beach 98 St",
+                    "language": "en"
+                  },
+                  {
+                    "text": "<p>[shuttle bus icon]Rockaway Beach Blvd at Beach 98 St</p>",
+                    "language": "en-html"
+                  }
+                ]
+              }
+            },
+            {
+              "affected_entity": {
+                "agency_id": "MTASBWY",
+                "stop_id": "H14"
+              },
+              "notes": {
+                "translation": [
+                  {
+                    "text": "[shuttle bus icon] Rockaway Beach Blvd at Beach 105 St",
+                    "language": "en"
+                  },
+                  {
+                    "text": "<p>[shuttle bus icon]Rockaway Beach Blvd at Beach 105 St</p>",
+                    "language": "en-html"
+                  }
+                ]
+              }
+            },
+            {
+              "affected_entity": {
+                "agency_id": "MTASBWY",
+                "stop_id": "H15"
+              },
+              "notes": {
+                "translation": [
+                  {
+                    "text": "[shuttle bus icon] Beach 116 St at station entrance",
+                    "language": "en"
+                  },
+                  {
+                    "text": "<p>[shuttle bus icon]Beach 116 St at station entrance</p>",
+                    "language": "en-html"
+                  }
+                ]
+              }
+            }
+          ],
+          "display_before_active": 3600,
+          "human_readable_active_period": {
+            "translation": [
+              {
+                "text": "Oct 23 - 26, Fri 11:45 PM to Mon 5:00 AM",
+                "language": "en"
+              }
+            ]
+          },
+          "affected_stations": [
+            {
+              "agency_id": "MTASBWY",
+              "route_id": "H",
+              "stop_id": "H01",
+              "direction_id": 1,
+              "transit_realtime.mercury_entity_selector": {
+                "sort_order": "MTASBWY:H:21"
+              }
+            },
+            {
+              "agency_id": "MTASBWY",
+              "route_id": "H",
+              "stop_id": "H02",
+              "direction_id": 1,
+              "transit_realtime.mercury_entity_selector": {
+                "sort_order": "MTASBWY:H:21"
+              }
+            },
+            {
+              "agency_id": "MTASBWY",
+              "route_id": "H",
+              "stop_id": "H03",
+              "direction_id": 1,
+              "transit_realtime.mercury_entity_selector": {
+                "sort_order": "MTASBWY:H:21"
+              }
+            },
+            {
+              "agency_id": "MTASBWY",
+              "route_id": "H",
+              "stop_id": "H04",
+              "direction_id": 1,
+              "transit_realtime.mercury_entity_selector": {
+                "sort_order": "MTASBWY:H:21"
+              }
+            },
+            {
+              "agency_id": "MTASBWY",
+              "route_id": "H",
+              "stop_id": "H11",
+              "direction_id": 0,
+              "transit_realtime.mercury_entity_selector": {
+                "sort_order": "MTASBWY:H:21"
+              }
+            },
+            {
+              "agency_id": "MTASBWY",
+              "route_id": "H",
+              "stop_id": "H10",
+              "direction_id": 0,
+              "transit_realtime.mercury_entity_selector": {
+                "sort_order": "MTASBWY:H:21"
+              }
+            },
+            {
+              "agency_id": "MTASBWY",
+              "route_id": "H",
+              "stop_id": "H09",
+              "direction_id": 0,
+              "transit_realtime.mercury_entity_selector": {
+                "sort_order": "MTASBWY:H:21"
+              }
+            },
+            {
+              "agency_id": "MTASBWY",
+              "route_id": "H",
+              "stop_id": "H08",
+              "direction_id": 0,
+              "transit_realtime.mercury_entity_selector": {
+                "sort_order": "MTASBWY:H:21"
+              }
+            },
+            {
+              "agency_id": "MTASBWY",
+              "route_id": "H",
+              "stop_id": "H07",
+              "direction_id": 0,
+              "transit_realtime.mercury_entity_selector": {
+                "sort_order": "MTASBWY:H:21"
+              }
+            },
+            {
+              "agency_id": "MTASBWY",
+              "route_id": "H",
+              "stop_id": "H06",
+              "direction_id": 0,
+              "transit_realtime.mercury_entity_selector": {
+                "sort_order": "MTASBWY:H:21"
+              }
+            },
+            {
+              "agency_id": "MTASBWY",
+              "route_id": "H",
+              "stop_id": "A55",
+              "direction_id": 1,
+              "transit_realtime.mercury_entity_selector": {
+                "sort_order": "MTASBWY:H:21"
+              }
+            },
+            {
+              "agency_id": "MTASBWY",
+              "route_id": "H",
+              "stop_id": "A57",
+              "direction_id": 1,
+              "transit_realtime.mercury_entity_selector": {
+                "sort_order": "MTASBWY:H:21"
+              }
+            },
+            {
+              "agency_id": "MTASBWY",
+              "route_id": "H",
+              "stop_id": "A59",
+              "direction_id": 1,
+              "transit_realtime.mercury_entity_selector": {
+                "sort_order": "MTASBWY:H:21"
+              }
+            },
+            {
+              "agency_id": "MTASBWY",
+              "route_id": "H",
+              "stop_id": "A60",
+              "direction_id": 1,
+              "transit_realtime.mercury_entity_selector": {
+                "sort_order": "MTASBWY:H:21"
+              }
+            },
+            {
+              "agency_id": "MTASBWY",
+              "route_id": "H",
+              "stop_id": "A61",
+              "direction_id": 1,
+              "transit_realtime.mercury_entity_selector": {
+                "sort_order": "MTASBWY:H:21"
+              }
+            },
+            {
+              "agency_id": "MTASBWY",
+              "route_id": "H",
+              "stop_id": "A65",
+              "direction_id": 0,
+              "transit_realtime.mercury_entity_selector": {
+                "sort_order": "MTASBWY:H:21"
+              }
+            },
+            {
+              "agency_id": "MTASBWY",
+              "route_id": "H",
+              "stop_id": "A64",
+              "direction_id": 0,
+              "transit_realtime.mercury_entity_selector": {
+                "sort_order": "MTASBWY:H:21"
+              }
+            },
+            {
+              "agency_id": "MTASBWY",
+              "route_id": "H",
+              "stop_id": "A63",
+              "direction_id": 0,
+              "transit_realtime.mercury_entity_selector": {
+                "sort_order": "MTASBWY:H:21"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

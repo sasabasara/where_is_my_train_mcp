@@ -1,0 +1,72 @@
+[
+  {
+    "station": "21 St-Queensbridge",
+    "borough": "",
+    "trainno": "F/M",
+    "equipment": "EL407",
+    "equipmenttype": "EL",
+    "serving": "mezzanine to Jamaica-bound platform",
+    "ADA": "Y",
+    "outagedate": "09/23/2026 08:07:00 PM",
+    "estimatedreturntoservice": "09/24/2026 06:00:00 AM",
+    "reason": "Under Investigation",
+    "isupcomingoutage": "N",
+    "ismaintenanceoutage": "N"
+  },
+  {
+    "station": "34 St-Hudson Yards",
+    "borough": "",
+    "trainno": "7",
+    "equipment": "EL602",
+    "equipmenttype": "EL",
+    "serving": "upper mezzanine to lower mezzanine for Flushing Main St-bound service",
+    "ADA": "Y",
+    "outagedate": "09/23/2026 06:55:00 PM",
+    "estimatedreturntoservice": "09/24/2026 03:00:00 AM",
+    "reason": "Under Investigation",
+    "isupcomingoutage": "N",
+    "ismaintenanceoutage": "N"
+  },
+  {
+    "station": "125 St",
+    "borough": "",
+    "trainno": "A/C/B/D",
+    "equipment": "EL143",
+    "equipmenttype": "EL",
+    "serving": "Mezzanine to downtown platform",
+    "ADA": "Y",
+    "outagedate": "09/29/2026 10:00:00 PM",
+    "estimatedreturntoservice": "09/30/2026 06:00:00 AM",
+    "reason": "Maintenance",
+    "isupcomingoutage": "Y",
+    "ismaintenanceoutage": "N"
+  },
+  {
+    "station": "125 St",
+    "borough": "",
+    "trainno": "A/C/B/D",
+    "equipment": "EL142",
+    "equipmenttype": "EL",
+    "serving": "125 St & St Nicholas Ave (SW corner) to mezzanine for service in both directions",
+    "ADA": "Y",
+    "outagedate": "09/29/2026 10:00:00 PM",
+    "estimatedreturntoservice": "09/30/2026 06:00:00 AM",
+    "reason": "Maintenance",
+    "isupcomingoutage": "Y",
+    "ismaintenanceoutage": "N"
+  },
+  {
+    "station": "125 St",
+    "borough": "",
+    "trainno": "1",
+    "equipment": "ES101",
+    "equipmenttype": "ES",
+    "serving": "mezzanine to 125 St & Broadway (SW corner)",
+    "ADA": "N",
+    "outagedate": "09/23/2026 08:45:00 AM",
+    "estimatedreturntoservice": "09/26/2026 02:00:00 PM",
+    "reason": "Repair",
+    "isupcomingoutage": "N",
+    "ismaintenanceoutage": "N"
+  }
+]

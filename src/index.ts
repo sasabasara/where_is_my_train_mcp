@@ -71,21 +71,40 @@ const nextTrainsOutputSchema = standardResponseShape(
   }).passthrough().nullable()
 );
 
+const severitySchema = z.enum(["CRITICAL", "MAJOR", "MINOR", "PLANNED"]);
+const alertCategories = ["DELAYS", "SUSPENSIONS", "REROUTES", "PLANNED_WORK", "STATION_NOTICES", "OTHER"] as const;
+
 const serviceStatusOutputSchema = standardResponseShape(
   z.object({
+    line: z.string().nullable().optional(),
     activeTrips: z.number().optional(),
-    totalAlerts: z.number().optional(),
-    topAlerts: z.array(z.string().optional()).optional()
+    activeAlerts: z.number().optional(),
+    topAlerts: z.array(z.object({
+      header: z.string(),
+      severity: severitySchema,
+      alertType: z.string().nullable(),
+      affectedLines: z.array(z.string())
+    }).passthrough()).optional(),
+    unavailableFeeds: z.array(z.string()).optional()
   }).passthrough().nullable()
 );
 
 const subwayAlertsOutputSchema = standardResponseShape(
-  z.array(z.object({
-    header: z.string().optional(),
-    description: z.string().optional(),
-    severity: z.union([z.string(), z.number()]).optional(),
-    affectedLines: z.array(z.string().optional()).optional()
-  }).passthrough()).nullable()
+  z.object({
+    total: z.number(),
+    returned: z.number(),
+    alerts: z.array(z.object({
+      header: z.string(),
+      description: z.string().nullable(),
+      alertType: z.string().nullable(),
+      severity: severitySchema,
+      category: z.enum(alertCategories),
+      affectedLines: z.array(z.string()),
+      isActive: z.boolean(),
+      activePeriod: z.object({ start: z.number(), end: z.number().nullable() }).nullable(),
+      updatedAt: z.number().nullable()
+    }).passthrough())
+  }).passthrough().nullable()
 );
 
 const stationTransfersOutputSchema = standardResponseShape(
@@ -112,7 +131,7 @@ const serviceDisruptionsOutputSchema = standardResponseShape(
     filteredLine: z.string().nullable().optional(),
     filteredLocation: z.string().nullable().optional(),
     filteredSeverity: z.string().nullable().optional(),
-    systemStatus: z.enum(["normal", "disrupted"]).optional(),
+    systemStatus: z.enum(["normal", "service_changes", "disrupted"]).optional(),
     counts: z.object({
       total: z.number(),
       critical: z.number(),
@@ -126,13 +145,23 @@ const serviceDisruptionsOutputSchema = standardResponseShape(
 );
 
 const elevatorEscalatorOutputSchema = standardResponseShape(
-  z.array(z.object({
-    station: z.string(),
-    lines: z.string(),
-    equipment: z.enum(["Elevator", "Escalator"]),
-    reason: z.string(),
-    status: z.enum(["Upcoming Work", "Currently Out"])
-  }).passthrough()).nullable()
+  z.object({
+    total: z.number(),
+    returned: z.number(),
+    outages: z.array(z.object({
+      station: z.string(),
+      lines: z.string(),
+      equipment: z.enum(["Elevator", "Escalator"]),
+      equipmentId: z.string(),
+      serving: z.string(),
+      ada: z.boolean(),
+      status: z.enum(["Upcoming Work", "Currently Out"]),
+      reason: z.string(),
+      outageStart: z.string(),
+      estimatedReturn: z.string().nullable(),
+      alternativeRoute: z.string().nullable()
+    }).passthrough())
+  }).passthrough().nullable()
 );
 
 // Tool logging helper
@@ -151,17 +180,20 @@ function logToolResult(toolName: string, result: ToolResponse): void {
       console.log(`[Tool] ${toolName} completed: empty response`);
       return;
     }
+    // Handlers wrap their payload as { status, data, message }
     const parsed = JSON.parse(text);
+    const data = parsed.data;
 
-    // Generate a summary based on common response patterns
     let summary = "";
-    if (parsed.stations) summary = `${parsed.stations.length} station(s)`;
-    else if (parsed.arrivals) summary = `${parsed.arrivals.length} arrival(s)`;
-    else if (parsed.alerts) summary = `${parsed.alerts.length} alert(s)`;
-    else if (parsed.disruptions) summary = `${parsed.disruptions.length} disruption(s)`;
-    else if (parsed.lines) summary = `${parsed.lines.length} line(s)`;
-    else if (parsed.outages) summary = `${parsed.outages.length} outage(s)`;
-    else if (parsed.errorType) summary = `error: ${parsed.errorType}`;
+    if (parsed.status === "error") summary = `error: ${parsed.message}`;
+    else if (Array.isArray(data)) summary = `${data.length} result(s)`;
+    else if (data?.stations) summary = `${data.stations.length} station(s)`;
+    else if (data?.arrivals) summary = `${data.arrivals.length} arrival(s)`;
+    else if (data?.alerts) summary = `${data.total} alert(s)`;
+    else if (data?.disruptions) summary = `${data.systemStatus}, ${data.disruptions.length} disruption(s)`;
+    else if (data?.outages) summary = `${data.total} outage(s)`;
+    else if (data?.transfers) summary = `${data.transfers.length} transfer(s)`;
+    else if (data?.activeTrips !== undefined) summary = `${data.activeTrips} trip(s), ${data.activeAlerts} alert(s)`;
     else summary = "ok";
 
     console.log(`[Tool] ${toolName} completed: ${summary}`);
@@ -337,7 +369,7 @@ export function createMcpServer() {
     "next_trains",
     {
       title: "Next Trains",
-      description: "Real-time train arrivals with delay predictions, crowding levels, and service alerts",
+      description: "Real-time train arrivals at a station from live MTA feeds: line, destination, and predicted arrival time (Unix ms) for the soonest trains",
       inputSchema: {
         station: z.string().describe("Station name to get arrivals for"),
         direction: z.enum(["uptown", "downtown", "manhattan", "brooklyn", "queens", "bronx"]).optional().describe("Filter by direction"),
@@ -372,9 +404,9 @@ export function createMcpServer() {
     "service_status",
     {
       title: "Service Status",
-      description: "System-wide service snapshot: count of currently active trips, total active alerts, and the top current alert headlines",
+      description: "Quick service snapshot for the whole system or one line: number of trains currently running, number of alerts in effect, the 3 most severe alerts, and any real-time feeds that are currently unavailable",
       inputSchema: {
-        line: z.string().optional().describe("Filter by specific train line")
+        line: z.string().optional().describe("Limit to one line, e.g. \"L\" or \"6\"")
       },
       outputSchema: serviceStatusOutputSchema,
       annotations: {
@@ -404,11 +436,11 @@ export function createMcpServer() {
     "subway_alerts",
     {
       title: "Subway Alerts",
-      description: "Detailed service alerts with impact analysis, affected stations, and estimated resolution times",
+      description: "Official MTA subway service alerts, most severe first. Each alert includes the MTA alert type (e.g. \"Delays\", \"Part Suspended\", \"Planned - Stops Skipped\"), severity, category, affected lines, and active period (Unix ms). Only alerts in effect right now by default; set active_only=false to include upcoming planned work",
       inputSchema: {
         line: z.string().optional().describe("Filter alerts by specific train line"),
-        active_only: z.boolean().optional().describe("Show only currently active alerts"),
-        category: z.enum(["ALL", "DELAYS", "SUSPENSIONS", "REROUTES", "PLANNED_WORK", "ACCESSIBILITY"]).optional().describe("Filter by alert category"),
+        active_only: z.boolean().optional().describe("Only alerts in effect right now (default: true)"),
+        category: z.enum(["ALL", ...alertCategories]).optional().describe("Filter by alert category"),
         severity: z.enum(["ALL", "CRITICAL", "MAJOR", "MINOR", "PLANNED"]).optional().describe("Filter by alert severity")
       },
       outputSchema: subwayAlertsOutputSchema,
@@ -439,7 +471,7 @@ export function createMcpServer() {
     "station_transfers",
     {
       title: "Station Transfers",
-      description: "Find all train line transfer options at a specific subway station",
+      description: "List the stations connected to a subway station by free in-system transfers",
       inputSchema: {
         station: z.string().describe("Station name to find transfers for")
       },
@@ -471,11 +503,10 @@ export function createMcpServer() {
     "nearest_station",
     {
       title: "Nearest Station",
-      description: "Find closest subway stations by distance with accessibility info and real-time service status",
+      description: "Find the subway stations closest to GPS coordinates, sorted by straight-line distance in meters. Requires lat/lon — convert addresses or landmarks to coordinates first",
       inputSchema: {
-        location: z.string().optional().describe("Address, landmark, or neighborhood"),
-        lat: z.number().optional().describe("Latitude coordinate"),
-        lon: z.number().optional().describe("Longitude coordinate"),
+        lat: z.number().optional().describe("Latitude coordinate (required)"),
+        lon: z.number().optional().describe("Longitude coordinate (required)"),
         limit: z.number().optional().describe("Maximum number of stations to return"),
         radius: z.number().optional().describe("Search radius in meters"),
         accessible_only: z.boolean().optional().describe("Return only wheelchair accessible stations"),
@@ -510,11 +541,11 @@ export function createMcpServer() {
     "service_disruptions",
     {
       title: "Service Disruptions",
-      description: "Get comprehensive service disruption information with impact analysis, alternative routes, and estimated resolution times",
+      description: "Is subway service disrupted right now? Summarizes alerts in effect for the system, one line, or a location: overall status (normal / service_changes / disrupted), counts by severity, and each disruption with affected lines, affected stations, and when it is expected to end (Unix ms, when known)",
       inputSchema: {
         line: z.string().optional().describe("Filter by specific train line"),
         location: z.string().optional().describe("Filter disruptions affecting a specific area or station"),
-        severity: z.enum(["ALL", "CRITICAL", "MAJOR", "MINOR"]).optional().describe("Filter by disruption severity")
+        severity: z.enum(["ALL", "CRITICAL", "MAJOR", "MINOR", "PLANNED"]).optional().describe("Filter by disruption severity")
       },
       outputSchema: serviceDisruptionsOutputSchema,
       annotations: {
@@ -544,7 +575,7 @@ export function createMcpServer() {
     "elevator_and_escalator_status",
     {
       title: "Elevator and Escalator Status",
-      description: "Get current and upcoming elevator and escalator outages at subway stations, including ADA accessibility impact and estimated return to service",
+      description: "Elevator and escalator outages at subway stations. Each outage includes station, lines, what the equipment serves, ADA status, reason, outage start and estimated return (New York local time), and the MTA's suggested alternative route when one exists",
       inputSchema: {
         station: z.string().optional().describe("Filter by station name (supports partial matching)"),
         equipment_type: z.enum(["elevator", "escalator", "all"]).optional().describe("Filter by equipment type (default: all)"),

@@ -39,16 +39,22 @@ function detectClientType(userAgent: string | undefined): string {
     return "unknown";
 }
 
-// Wide event logging middleware - one structured JSON per request
+// Wide event logging middleware - one structured JSON per request.
+// Logged on 'finish' because the MCP transport writes responses directly
+// (not via res.json); res.json is still wrapped to capture our own error bodies.
 app.use((req, res, next) => {
     const startTime = Date.now();
     const requestId = randomUUID().slice(0, 8);
+    let body: any = null;
 
-    // Capture the original json method
     const originalJson = res.json.bind(res);
+    res.json = (b: any) => {
+        body = b;
+        return originalJson(b);
+    };
 
-    res.json = (body: any) => {
-        const sessionId = req.headers["mcp-session-id"] as string | undefined;
+    res.on("finish", () => {
+        const sessionId = (req.headers["mcp-session-id"] ?? res.getHeader("mcp-session-id")) as string | undefined;
 
         const event = {
             // Request identity
@@ -81,8 +87,7 @@ app.use((req, res, next) => {
         };
 
         console.log(JSON.stringify(event));
-        return originalJson(body);
-    };
+    });
 
     next();
 });
@@ -186,7 +191,7 @@ app.post("/mcp", async (req, res) => {
                     sessionId: id.slice(0, 8),
                     clientName,
                     clientVersion,
-                    activeSessions: Object.keys(httpTransports).length + 1
+                    activeSessions: Object.keys(httpTransports).length
                 }));
             }
         });
@@ -280,13 +285,13 @@ app.get("/.well-known/mcp/server-card.json", (req, res) => {
         capabilities: {
             tools: [
                 { name: "find_station", description: "Search for subway stations by name with fuzzy matching and relevance scoring" },
-                { name: "next_trains", description: "Real-time train arrivals with delay predictions, crowding levels, and service alerts" },
-                { name: "service_status", description: "System-wide service snapshot: count of currently active trips, total active alerts, and the top current alert headlines" },
-                { name: "subway_alerts", description: "Detailed service alerts with impact analysis, affected stations, and estimated resolution times" },
-                { name: "station_transfers", description: "Find all train line transfer options at a specific subway station" },
-                { name: "nearest_station", description: "Find closest subway stations by distance with accessibility info and real-time service status" },
-                { name: "service_disruptions", description: "Get comprehensive service disruption information with impact analysis, alternative routes, and estimated resolution times" },
-                { name: "elevator_and_escalator_status", description: "Get current and upcoming elevator and escalator outages at subway stations, including ADA accessibility impact and estimated return to service" }
+                { name: "next_trains", description: "Real-time train arrivals at a station from live MTA feeds: line, destination, and predicted arrival time" },
+                { name: "service_status", description: "Quick service snapshot for the whole system or one line: trains running, alerts in effect, and the most severe alerts" },
+                { name: "subway_alerts", description: "Official MTA subway service alerts, most severe first, with alert type, severity, affected lines, and active period" },
+                { name: "station_transfers", description: "List the stations connected to a subway station by free in-system transfers" },
+                { name: "nearest_station", description: "Find the subway stations closest to GPS coordinates" },
+                { name: "service_disruptions", description: "Is subway service disrupted right now? Overall status, counts by severity, and each disruption with affected lines and stations" },
+                { name: "elevator_and_escalator_status", description: "Elevator and escalator outages at subway stations, with estimated return and the MTA's suggested alternative route" }
             ],
             prompts: [
                 { name: "check_train_arrivals", description: "Check upcoming train arrivals at a station" },

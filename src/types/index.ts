@@ -186,11 +186,29 @@ export interface ServiceStatusArgs {
   line?: string;
 }
 
+export type AlertSeverity = 'CRITICAL' | 'MAJOR' | 'MINOR' | 'PLANNED';
+export type AlertCategory = 'DELAYS' | 'SUSPENSIONS' | 'REROUTES' | 'PLANNED_WORK' | 'STATION_NOTICES' | 'OTHER';
+
+export interface SubwayAlert {
+  id: string;
+  header: string;
+  description: string | null;
+  alertType: string | null;
+  priority: number;
+  severity: AlertSeverity;
+  category: AlertCategory;
+  affectedLines: string[];
+  affectedStopIds: string[];
+  isActive: boolean;
+  activePeriod: { start: number; end: number | null } | null;
+  updatedAt: number | null;
+}
+
 export interface SubwayAlertsArgs {
   line?: string;
   active_only?: boolean;
-  category?: 'ALL' | 'DELAYS' | 'SUSPENSIONS' | 'REROUTES' | 'PLANNED_WORK' | 'ACCESSIBILITY';
-  severity?: 'ALL' | 'CRITICAL' | 'MAJOR' | 'MINOR' | 'PLANNED';
+  category?: 'ALL' | AlertCategory;
+  severity?: 'ALL' | AlertSeverity;
 }
 
 export interface StationTransfersArgs {
@@ -198,7 +216,6 @@ export interface StationTransfersArgs {
 }
 
 export interface NearestStationArgs {
-  location?: string;
   lat?: number;
   lon?: number;
   limit?: number;
@@ -210,7 +227,7 @@ export interface NearestStationArgs {
 export interface ServiceDisruptionsArgs {
   line?: string;
   location?: string;
-  severity?: 'ALL' | 'CRITICAL' | 'MAJOR' | 'MINOR';
+  severity?: 'ALL' | AlertSeverity;
 }
 
 export interface CacheStatus {
