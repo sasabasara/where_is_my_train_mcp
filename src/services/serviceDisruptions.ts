@@ -1,5 +1,5 @@
-import { DynamicLineService } from './dynamicLineService.js';
-import { StationMapper } from './stationMapper.js';
+import { getServiceContext } from '../utils/time.js';
+import { getStopName } from './stationService.js';
 import type { AlertCategory, AlertSeverity, ServiceDisruptionsArgs, SubwayAlert } from '../types/index.js';
 
 export interface DisruptionInfo {
@@ -14,14 +14,12 @@ export interface DisruptionInfo {
 }
 
 export class ServiceDisruptionAnalyzer {
-  private static stationMapper = new StationMapper();
-
   /**
    * @param alerts Currently active alerts, already filtered by line/severity and sorted most severe first
    */
-  static async analyze(params: ServiceDisruptionsArgs, alerts: SubwayAlert[]) {
-    const serviceContext = DynamicLineService.getServiceContext();
-    let disruptions = await Promise.all(alerts.map(alert => this.toDisruption(alert)));
+  static analyze(params: ServiceDisruptionsArgs, alerts: SubwayAlert[]) {
+    const serviceContext = getServiceContext();
+    let disruptions = alerts.map(alert => this.toDisruption(alert));
 
     if (params.location) {
       const locationLower = params.location.toLowerCase();
@@ -58,8 +56,8 @@ export class ServiceDisruptionAnalyzer {
     };
   }
 
-  private static async toDisruption(alert: SubwayAlert): Promise<DisruptionInfo> {
-    const names = await Promise.all(alert.affectedStopIds.map(id => this.stationMapper.getStationName(id)));
+  private static toDisruption(alert: SubwayAlert): DisruptionInfo {
+    const names = alert.affectedStopIds.map(getStopName);
 
     return {
       lines: alert.affectedLines,

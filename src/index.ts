@@ -210,12 +210,12 @@ function logToolResult(toolName: string, result: ToolResponse): void {
     let summary = "";
     if (parsed.status === "error") summary = `error: ${parsed.message}`;
     else if (Array.isArray(data)) summary = `${data.length} result(s)`;
+    else if (data?.ambiguous) summary = `ambiguous: ${data.options.length} station(s)`;
     else if (data?.stations) summary = `${data.stations.length} station(s)`;
     else if (data?.arrivals) summary = `${data.arrivals.length} arrival(s)`;
     else if (data?.alerts) summary = `${data.total} alert(s)`;
     else if (data?.disruptions) summary = `${data.systemStatus}, ${data.disruptions.length} disruption(s)`;
     else if (data?.outages) summary = `${data.total} outage(s)`;
-    else if (data?.ambiguous) summary = `ambiguous: ${data.options.length} station(s)`;
     else if (data?.connections) summary = `${data.lines.length} line(s)`;
     else if (data?.activeTrips !== undefined) summary = `${data.activeTrips} trip(s), ${data.activeAlerts} alert(s)`;
     else summary = "ok";

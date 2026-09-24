@@ -11,7 +11,7 @@ import {
   directionMatches,
   sortRoutes
 } from "../services/stationInfoService.js";
-import { StationMatcher, getStopsData, getTransfersData, getGTFSSourceInfo, ensureDataLoaded } from "../services/stationService.js";
+import { StationMatcher, getStopsData, getTransfersData, ensureDataLoaded } from "../services/stationService.js";
 import { calculateDistance, getTrainDestination } from "../utils/index.js";
 import { ServiceDisruptionAnalyzer } from "../services/serviceDisruptions.js";
 import {
@@ -26,10 +26,6 @@ import {
   ServiceDisruptionsArgs,
   ElevatorEscalatorStatusArgs,
   EquipmentOutage,
-  GTFSEntity,
-  MTAFeedData,
-  Stop,
-  Transfer,
   StationInfo
 } from "../types/index.js";
 
@@ -59,7 +55,7 @@ function createStandardResponse(data: any, message: string, isError = false): To
 export async function handleServiceDisruptions(args: ServiceDisruptionsArgs): Promise<ToolResponse> {
   try {
     const alerts = await getSubwayAlerts({ line: args.line, severity: args.severity, activeOnly: true });
-    const analysis = await ServiceDisruptionAnalyzer.analyze(args, alerts);
+    const analysis = ServiceDisruptionAnalyzer.analyze(args, alerts);
     return createStandardResponse(analysis, `Service disruption analysis for ${args.line || 'system'}`);
   } catch (error) {
     return createStandardResponse(null, "Service disruption analysis temporarily unavailable.", true);
@@ -229,7 +225,7 @@ export async function handleNextTrains(args: NextTrainsArgs): Promise<ToolRespon
         arrivals.push({
           line: trip.routeId,
           direction: directionLabel(update.stopId),
-          destination: await getTrainDestination(entity.tripUpdate.stopTimeUpdate),
+          destination: getTrainDestination(entity.tripUpdate.stopTimeUpdate),
           arrivalTimestamp,
           station: getStationInfo(base)?.name ?? stationName,
           stopId: update.stopId,
