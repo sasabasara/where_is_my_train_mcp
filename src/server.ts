@@ -7,6 +7,7 @@ import { startPolling } from "./services/pollingService.js";
 import { ensureDataLoaded } from "./services/stationService.js";
 import { ensureStationInfoLoaded } from "./services/stationInfoService.js";
 import { randomUUID } from "crypto";
+import { SERVER_VERSION } from "./version.js";
 
 const app = express();
 
@@ -121,7 +122,7 @@ app.get("/", (req, res) => {
     res.json({
         status: "ok",
         name: "where-is-my-train-mta",
-        version: "1.0.0",
+        version: SERVER_VERSION,
         endpoints: {
             mcp: "/mcp",
             serverCard: "/.well-known/mcp/server-card.json"
@@ -267,7 +268,7 @@ app.get("/.well-known/mcp/server-card.json", (req, res) => {
     res.json({
         name: "where-is-my-train-mta",
         description: "NYC Subway MCP server providing real-time train arrivals, service alerts, and station information.",
-        version: "1.0.0",
+        version: SERVER_VERSION,
         url: baseUrl,
         homepage: "https://github.com/sasabasara/where_is_my_train_mcp",
         license: "MIT",
@@ -314,7 +315,8 @@ app.listen(PORT, () => {
         event: "server_start",
         timestamp: new Date().toISOString(),
         port: PORT,
-        version: "1.0.0"
+        version: SERVER_VERSION,
+        node: process.version
     }));
 
     startPolling();

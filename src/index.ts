@@ -12,6 +12,7 @@ import {
 } from "./handlers/toolHandlers.js";
 
 import { ToolResponse } from "./types/index.js";
+import { SERVER_VERSION } from "./version.js";
 
 // Handlers wrap their JSON in `content[0].text`; when an outputSchema is declared
 // the SDK also expects the parsed payload as `structuredContent`. Parse it once here.
@@ -234,7 +235,7 @@ export function createMcpServer() {
 
   const server = new McpServer({
     name: 'where-is-my-train-mta',
-    version: '1.0.0'
+    version: SERVER_VERSION
   });
 
   // Subway line data for resources
