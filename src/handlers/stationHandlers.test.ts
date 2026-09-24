@@ -10,16 +10,17 @@ const stops = parseCSV(fs.readFileSync(path.join(fixtureDir, 'stops.txt'), 'utf-
 
 const NOW = Date.UTC(2026, 8, 24, 1, 0, 0);
 const inMinutes = (m: number) => String(Math.floor((NOW + m * 60_000) / 1000));
-// Terminal is a stop outside every fixture complex, so each trip yields one arrival
-const trip = (routeId: string, tripId: string, stopId: string, minutes: number) => ({
+const tripTo = (routeId: string, tripId: string, stopId: string, minutes: number, terminal: string) => ({
   tripUpdate: {
     trip: { routeId, tripId },
     stopTimeUpdate: [
       { stopId, arrival: { time: inMinutes(minutes) } },
-      { stopId: '999N', arrival: { time: inMinutes(minutes + 20) } }
+      { stopId: terminal, arrival: { time: inMinutes(minutes + 20) } }
     ]
   }
 });
+// Terminal is a stop outside every fixture complex, so each trip yields one arrival
+const trip = (routeId: string, tripId: string, stopId: string, minutes: number) => tripTo(routeId, tripId, stopId, minutes, '999N');
 
 vi.mock('../services/mtaService.js', () => ({
   fetchMTAData: vi.fn(async () => ({
@@ -31,7 +32,11 @@ vi.mock('../services/mtaService.js', () => ({
       trip('1', 't5', '130S', 1),
       trip('F', 't6', 'D18N', 2),
       trip('7', 't7', '725N', 6),
-      trip('A', 't8', 'A27N', 7)
+      trip('A', 't8', 'A27N', 7),
+      tripTo('4', 't9', '635N', 8, '401N'),   // uptown to Woodlawn (Bronx)
+      tripTo('Q', 't10', 'R20S', 9, 'D43S'),  // downtown to Coney Island (Brooklyn), terminates there
+      trip('D', 't11', 'D43N', 3),            // departs Coney Island
+      { tripUpdate: { trip: { routeId: 'GS', tripId: 't12' }, stopTimeUpdate: [{ stopId: '902N', arrival: { time: inMinutes(2) } }] } } // shuttle ending at Times Sq
     ],
     feedStatus: { successful: 8, failed: 0, failedFeeds: [] }
   })),
@@ -46,6 +51,7 @@ vi.mock('../services/stationService.js', async (importOriginal) => {
     ...actual,
     ensureDataLoaded: vi.fn(async () => {}),
     getStopsData: () => stops,
+    getStopName: (id: string) => stops.find(s => s.stop_id === id.replace(/[NS]$/, ''))?.stop_name ?? id,
     getTransfersData: () => []
   };
 });
@@ -69,14 +75,15 @@ beforeAll(() => {
 describe('next_trains', () => {
   it('filters by direction using the MTA platform label', async () => {
     const { data } = payload(await handleNextTrains({ station: 'union sq', direction: 'uptown' }));
-    expect(data.arrivals.map((a: any) => a.line)).toEqual(['6', '6X']);
+    expect(data.arrivals.map((a: any) => a.line)).toEqual(['6', '6X', '4']);
     expect(data.arrivals.every((a: any) => a.direction === 'Uptown')).toBe(true);
   });
 
   it('labels each arrival with its direction and platform stop ID', async () => {
     const { data } = payload(await handleNextTrains({ station: 'union sq' }));
     expect(data.arrivals.find((a: any) => a.line === 'L')).toMatchObject({ direction: 'West Side', stopId: 'L03N' });
-    expect(data.availableDirections).toEqual(expect.arrayContaining(['Uptown', 'Downtown', 'West Side', 'Brooklyn']));
+    // Directions of trains actually coming (no Brooklyn-bound L in this snapshot)
+    expect(data.availableDirections.sort()).toEqual(['Downtown', 'Uptown', 'West Side']);
   });
 
   it('line "6" includes the 6X express', async () => {
@@ -111,7 +118,46 @@ describe('next_trains', () => {
   it('shows all directions with a note when the direction does not apply', async () => {
     const { data } = payload(await handleNextTrains({ stop_id: '130', direction: 'queens' }));
     expect(data.arrivals).toHaveLength(1);
-    expect(data.directionNote).toMatch(/doesn't match/);
+    expect(data.note).toMatch(/No upcoming trains match "queens"/);
+  });
+
+  it('matches direction against the destination and its borough', async () => {
+    const bronx = payload(await handleNextTrains({ station: 'union sq', direction: 'bronx' })).data;
+    expect(bronx.arrivals).toMatchObject([{ line: '4', destination: 'Woodlawn', destinationBorough: 'Bronx' }]);
+
+    const coney = payload(await handleNextTrains({ station: 'union sq', direction: 'coney island' })).data;
+    expect(coney.arrivals.map((a: any) => a.line)).toEqual(['Q']);
+
+    const brooklyn = payload(await handleNextTrains({ station: 'union sq', direction: 'brooklyn' })).data;
+    expect(brooklyn.arrivals.map((a: any) => a.line)).toEqual(['Q']);
+  });
+
+  it('leaves out trains that end their run at the station', async () => {
+    const coney = payload(await handleNextTrains({ stop_id: 'D43' })).data;
+    expect(coney.arrivals.map((a: any) => a.tripId)).toEqual(['t11']);
+
+    const timesSq = payload(await handleNextTrains({ station: 'times sq-42 st', line: 'S' })).data;
+    expect(timesSq.arrivals).toEqual([]);
+  });
+
+  it('explains an empty result, including a line that does not stop there', async () => {
+    const b = payload(await handleNextTrains({ station: 'union sq', line: 'B' })).data;
+    expect(b.note).toMatch(/The B doesn't normally stop at 14 St-Union Sq/);
+
+    const n = payload(await handleNextTrains({ station: 'times sq-42 st', line: 'N' })).data;
+    expect(n.note).toMatch(/No upcoming N trains/);
+    expect(n.note).not.toMatch(/doesn't normally stop/);
+  });
+
+  it('clamps limit to 1-10', async () => {
+    expect(payload(await handleNextTrains({ station: 'union sq', limit: -3 })).data.count).toBe(1);
+    expect(payload(await handleNextTrains({ station: 'union sq', limit: 500 })).data.count).toBeLessThanOrEqual(10);
+  });
+
+  it('understands ordinals and offers the major hubs ("34th street")', async () => {
+    const { data } = payload(await handleNextTrains({ station: '34th street' }));
+    expect(data.ambiguous).toBe(true);
+    expect(data.options.map((o: any) => o.name).sort()).toEqual(['34 St-Herald Sq', '34 St-Penn Station', '34 St-Penn Station']);
   });
 });
 
@@ -153,6 +199,12 @@ describe('nearest_station', () => {
 });
 
 describe('station_transfers', () => {
+  it('asks which station for an ambiguous name', async () => {
+    const { data } = payload(await handleStationTransfers({ station: '23 st' }));
+    expect(data.ambiguous).toBe(true);
+    expect(data.options).toHaveLength(4);
+  });
+
   it('lists every line reachable in the complex', async () => {
     const { data } = payload(await handleStationTransfers({ station: 'times sq' }));
     expect(data.lines).toEqual(['1', '2', '3', '7', 'A', 'C', 'E', 'N', 'Q', 'R', 'S', 'W']);

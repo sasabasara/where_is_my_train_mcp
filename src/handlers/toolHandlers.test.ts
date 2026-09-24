@@ -16,18 +16,19 @@ vi.mock('../services/mtaService.js', () => ({
     entity: [
       { tripUpdate: { trip: { routeId: 'L' } } },
       { tripUpdate: { trip: { routeId: 'L' } } },
-      { tripUpdate: { trip: { routeId: 'A' } } }
+      { tripUpdate: { trip: { routeId: 'A' } } },
+      { tripUpdate: { trip: { routeId: 'GS' } } }
     ],
     feedStatus: { successful: 7, failed: 1, failedFeeds: ['g'] }
   }))
 }));
 
-vi.mock('../services/stationService.js', () => ({
+vi.mock('../services/stationService.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../services/stationService.js')>()),
   ensureDataLoaded: vi.fn(async () => {}),
   getStopsData: () => [{ stop_id: 'S22', stop_name: 'New Dorp', location_type: '1', parent_station: '', stop_lat: '0', stop_lon: '0' }],
   getTransfersData: () => [],
-  getStopName: (id: string) => (id === 'S22' ? 'New Dorp' : id),
-  StationMatcher: {}
+  getStopName: (id: string) => (id === 'S22' ? 'New Dorp' : id)
 }));
 
 const {
@@ -96,6 +97,13 @@ describe('subway_alerts', () => {
   });
 });
 
+describe('line names riders use', () => {
+  it('"S" counts the shuttles and "SIR" matches the SI route', async () => {
+    expect(payload(await handleServiceStatus({ line: 'S' })).data.activeTrips).toBe(1);
+    expect(payload(await handleSubwayAlerts({ line: 'SIR' })).data.total).toBe(1);
+  });
+});
+
 describe('service_status', () => {
   it('filters trips and alerts by line and surfaces failed feeds', async () => {
     const { data } = payload(await handleServiceStatus({ line: 'l' }));
@@ -116,6 +124,11 @@ describe('elevator_and_escalator_status', () => {
 
     const upcoming = payload(await handleElevatorEscalatorStatus({ outage_type: 'upcoming' })).data;
     expect(upcoming.outages.map((o: any) => o.status)).toEqual(['Upcoming Work', 'Upcoming Work']);
+  });
+
+  it('matches station names the way riders type them', async () => {
+    const { data } = payload(await handleElevatorEscalatorStatus({ station: '34th st hudson yards' }));
+    expect(data.outages.map((o: any) => o.station)).toEqual(['34 St-Hudson Yards']);
   });
 
   it('includes return estimate and the MTA alternative route', async () => {
