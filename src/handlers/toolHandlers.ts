@@ -1,4 +1,5 @@
-import { fetchMTAData, fetchMTAAlerts, fetchEquipmentOutages } from "../services/mtaService.js";
+import { fetchMTAData, fetchEquipmentOutages, fetchEquipmentList } from "../services/mtaService.js";
+import { getSubwayAlerts } from "../services/alertService.js";
 import { StationMatcher, getStopsData, getTransfersData, getGTFSSourceInfo, ensureDataLoaded } from "../services/stationService.js";
 import { calculateDistance, getTrainDestination } from "../utils/index.js";
 import { ServiceDisruptionAnalyzer } from "../services/serviceDisruptions.js";
@@ -45,14 +46,8 @@ function createStandardResponse(data: any, message: string, isError = false): To
 // New tool handlers
 export async function handleServiceDisruptions(args: ServiceDisruptionsArgs): Promise<ToolResponse> {
   try {
-    const alertsResult = await handleSubwayAlerts({
-      line: args.line,
-      severity: args.severity as SubwayAlertsArgs['severity'],
-      active_only: true
-    });
-    const statusResult = await handleServiceStatus({ line: args.line });
-
-    const analysis = await ServiceDisruptionAnalyzer.analyze(args, alertsResult, statusResult);
+    const alerts = await getSubwayAlerts({ line: args.line, severity: args.severity, activeOnly: true });
+    const analysis = await ServiceDisruptionAnalyzer.analyze(args, alerts);
     return createStandardResponse(analysis, `Service disruption analysis for ${args.line || 'system'}`);
   } catch (error) {
     return createStandardResponse(null, "Service disruption analysis temporarily unavailable.", true);
@@ -162,16 +157,23 @@ export async function handleNextTrains(args: NextTrainsArgs): Promise<ToolRespon
 
 export async function handleServiceStatus(args: ServiceStatusArgs): Promise<ToolResponse> {
   try {
-    const data = await fetchMTAData();
-    const alerts = data.entity?.filter((entity: any) => entity.alert) || [];
+    const line = args.line?.trim().toUpperCase();
+    const [data, alerts] = await Promise.all([
+      fetchMTAData(),
+      getSubwayAlerts({ line, activeOnly: true })
+    ]);
+
+    const trips = (data.entity || []).filter((e: any) => e.tripUpdate && (!line || e.tripUpdate.trip?.routeId === line));
 
     const result = {
-      activeTrips: data.entity?.filter((e: any) => e.tripUpdate).length || 0,
-      totalAlerts: alerts.length,
-      topAlerts: alerts.slice(0, 3).map((a: any) => a.alert.headerText?.translation?.[0]?.text)
+      line: line || null,
+      activeTrips: trips.length,
+      activeAlerts: alerts.length,
+      topAlerts: alerts.slice(0, 3).map(a => ({ header: a.header, severity: a.severity, alertType: a.alertType, affectedLines: a.affectedLines })),
+      unavailableFeeds: data.feedStatus?.failedFeeds ?? []
     };
 
-    return createStandardResponse(result, "System-wide service status overview");
+    return createStandardResponse(result, `Service status for ${line ? `the ${line} line` : 'the system'}`);
   } catch (error) {
     return createStandardResponse(null, "Service status temporarily unavailable.", true);
   }
@@ -179,22 +181,31 @@ export async function handleServiceStatus(args: ServiceStatusArgs): Promise<Tool
 
 export async function handleSubwayAlerts(args: SubwayAlertsArgs): Promise<ToolResponse> {
   try {
-    const alertsData = await fetchMTAAlerts();
-    const alerts = alertsData.entity?.filter((entity: any) => entity.alert) || [];
+    const alerts = await getSubwayAlerts({
+      line: args.line,
+      activeOnly: args.active_only ?? true,
+      severity: args.severity,
+      category: args.category
+    });
 
-    let filtered = alerts;
-    if (args.line) {
-      filtered = filtered.filter((e: any) => e.alert.informedEntity?.some((ie: any) => ie.routeId === args.line?.toUpperCase()));
-    }
+    const MAX_ALERTS = 15;
+    const result = {
+      total: alerts.length,
+      returned: Math.min(alerts.length, MAX_ALERTS),
+      alerts: alerts.slice(0, MAX_ALERTS).map(a => ({
+        header: a.header,
+        description: a.description,
+        alertType: a.alertType,
+        severity: a.severity,
+        category: a.category,
+        affectedLines: a.affectedLines,
+        isActive: a.isActive,
+        activePeriod: a.activePeriod,
+        updatedAt: a.updatedAt
+      }))
+    };
 
-    const processed = filtered.slice(0, 10).map((e: any) => ({
-      header: e.alert.headerText?.translation?.[0]?.text,
-      description: e.alert.descriptionText?.translation?.[0]?.text,
-      severity: e.alert.severityLevel,
-      affectedLines: [...new Set(e.alert.informedEntity?.map((ie: any) => ie.routeId))]
-    }));
-
-    return createStandardResponse(processed, `Found ${processed.length} alerts for ${args.line || 'system'}`);
+    return createStandardResponse(result, `Found ${result.total} alerts for ${args.line || 'system'}${result.total > result.returned ? ` (showing ${result.returned} most severe)` : ''}`);
   } catch (error) {
     return createStandardResponse(null, "Subway alerts temporarily unavailable.", true);
   }
@@ -261,27 +272,43 @@ export async function handleNearestStation(args: NearestStationArgs): Promise<To
 
 export async function handleElevatorEscalatorStatus(args: ElevatorEscalatorStatusArgs): Promise<ToolResponse> {
   try {
-    const allEquipment = await fetchEquipmentOutages();
-    let filtered = allEquipment;
+    const [allOutages, equipmentList] = await Promise.all([fetchEquipmentOutages(), fetchEquipmentList()]);
+    const equipmentById = new Map<string, any>(equipmentList.map((e: any) => [e.equipmentno, e]));
+    let filtered: EquipmentOutage[] = allOutages;
+
+    const outageType = args.outage_type ?? 'current';
+    if (outageType === 'current') filtered = filtered.filter(item => item.isupcomingoutage !== 'Y');
+    if (outageType === 'upcoming') filtered = filtered.filter(item => item.isupcomingoutage === 'Y');
+
+    if (args.equipment_type === 'elevator') filtered = filtered.filter(item => item.equipmenttype === 'EL');
+    if (args.equipment_type === 'escalator') filtered = filtered.filter(item => item.equipmenttype === 'ES');
 
     if (args.station) {
       const q = args.station.toLowerCase().trim();
-      filtered = filtered.filter((item: EquipmentOutage) => item.station.toLowerCase().includes(q));
+      filtered = filtered.filter(item => item.station.toLowerCase().includes(q));
     }
 
     if (args.ada_only) {
-      filtered = filtered.filter((item: EquipmentOutage) => item.ADA === 'Y');
+      filtered = filtered.filter(item => item.ADA === 'Y');
     }
 
-    const processed = filtered.slice(0, 15).map((item: EquipmentOutage) => ({
+    const MAX_OUTAGES = 25;
+    const outages = filtered.slice(0, MAX_OUTAGES).map(item => ({
       station: item.station,
       lines: item.trainno,
       equipment: item.equipmenttype === 'EL' ? 'Elevator' : 'Escalator',
+      equipmentId: item.equipment,
+      serving: item.serving,
+      ada: item.ADA === 'Y',
+      status: item.isupcomingoutage === 'Y' ? 'Upcoming Work' : 'Currently Out',
       reason: item.reason,
-      status: item.isupcomingoutage === 'Y' ? 'Upcoming Work' : 'Currently Out'
+      outageStart: item.outagedate,
+      estimatedReturn: item.estimatedreturntoservice || null,
+      alternativeRoute: equipmentById.get(item.equipment)?.alternativeroute || null
     }));
 
-    return createStandardResponse(processed, `Found ${processed.length} equipment outages`);
+    const result = { total: filtered.length, returned: outages.length, outages };
+    return createStandardResponse(result, `Found ${result.total} equipment outages${result.total > result.returned ? ` (showing ${result.returned})` : ''}`);
   } catch (error) {
     return createStandardResponse(null, "Elevator and escalator status temporarily unavailable.", true);
   }

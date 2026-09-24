@@ -71,20 +71,35 @@ export class DynamicLineService {
   /**
    * Check if current time is weekend (affects service patterns)
    */
-  static isWeekend(): boolean {
-    const now = new Date();
-    const day = now.getDay();
-    return day === 0 || day === 6; // Sunday = 0, Saturday = 6
+  static isWeekend(now = new Date()): boolean {
+    const { weekday } = this.nycTime(now);
+    return weekday === 'Sat' || weekday === 'Sun';
   }
-  
+
+  /**
+   * Hour and weekday in New York — the server runs in UTC on Railway,
+   * so Date#getHours()/getDay() would be 4-5 hours off.
+   */
+  static nycTime(now = new Date()): { hour: number; weekday: string } {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      hour: 'numeric',
+      hourCycle: 'h23',
+      weekday: 'short'
+    }).formatToParts(now);
+    return {
+      hour: Number(parts.find(p => p.type === 'hour')?.value),
+      weekday: parts.find(p => p.type === 'weekday')?.value ?? ''
+    };
+  }
+
   /**
    * Get service context (weekday/weekend, time of day)
    * Late night hours based on official MTA definition: midnight to 6:00 AM
    */
-  static getServiceContext(): { isWeekend: boolean; timeOfDay: string; serviceNote: string } {
-    const now = new Date();
-    const hour = now.getHours();
-    const isWeekend = this.isWeekend();
+  static getServiceContext(now = new Date()): { isWeekend: boolean; timeOfDay: string; serviceNote: string } {
+    const { hour } = this.nycTime(now);
+    const isWeekend = this.isWeekend(now);
     
     let timeOfDay = 'daytime';
     if (hour >= 0 && hour < 6) timeOfDay = 'late_night'; // MTA official: midnight to 6:00 AM

@@ -130,11 +130,7 @@ export async function fetchMTAData(forceRefresh = false) {
   return combinedData;
 }
 
-export async function fetchMTAAlerts() {
-  const root = await gtfsRootPromise;
-  const FeedMessage = root.lookupType("transit_realtime.FeedMessage");
-
-  const url = "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fsubway-alerts";
+async function fetchJSON(url: string, label: string): Promise<any> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 10000);
 
@@ -146,70 +142,73 @@ export async function fetchMTAAlerts() {
       }
     });
 
-    clearTimeout(timeoutId);
-
     if (!res.ok) {
       throw new Error(`HTTP ${res.status}: ${res.statusText}`);
     }
 
-    const buffer = Buffer.from(await res.arrayBuffer());
-
-    if (buffer.length === 0) {
-      throw new Error('Empty alerts response');
-    }
-
-    const message = FeedMessage.decode(buffer);
-    const decoded = FeedMessage.toObject(message, {
-      longs: String,
-      enums: String,
-      bytes: String
-    });
-
-    if (!decoded || !Array.isArray(decoded.entity)) {
-      throw new Error('Invalid alerts feed structure');
-    }
-
-    return decoded;
+    return await res.json();
   } catch (error: any) {
-    clearTimeout(timeoutId);
     if (error.name === 'AbortError') {
-      throw new Error('Alerts request timed out after 10 seconds');
+      throw new Error(`${label} request timed out after 10 seconds`);
     }
     throw error;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
+// JSON flavour of the alerts feed: same GTFS-RT shape, but with the MTA "Mercury"
+// extension (alert_type, priority, created/updated) already decoded.
+export async function fetchMTAAlerts() {
+  const data = await fetchJSON(
+    "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fsubway-alerts.json",
+    "Alerts"
+  );
+
+  if (!data || !Array.isArray(data.entity)) {
+    throw new Error('Invalid alerts feed structure');
+  }
+
+  return data;
+}
+
 export async function fetchEquipmentOutages() {
-  const url = "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fnyct_ene.json";
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10000);
+  const data = await fetchJSON(
+    "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fnyct_ene.json",
+    "Equipment outage"
+  );
+
+  if (!Array.isArray(data)) {
+    throw new Error('Invalid equipment outage data structure');
+  }
+
+  return data;
+}
+
+// Full elevator/escalator inventory (~700 rows, rarely changes) — cached for a day
+let equipmentListCache: any[] | null = null;
+let equipmentListFetchedAt = 0;
+const EQUIPMENT_LIST_TTL_MS = 24 * 60 * 60 * 1000;
+
+export async function fetchEquipmentList(): Promise<any[]> {
+  if (equipmentListCache && Date.now() - equipmentListFetchedAt < EQUIPMENT_LIST_TTL_MS) {
+    return equipmentListCache;
+  }
 
   try {
-    const res = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        'User-Agent': 'whereismytrain-mcp/1.0'
-      }
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-    }
-
-    const data = await res.json();
-
+    const data = await fetchJSON(
+      "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fnyct_ene_equipments.json",
+      "Equipment list"
+    );
     if (!Array.isArray(data)) {
-      throw new Error('Invalid equipment outage data structure');
+      throw new Error('Invalid equipment list structure');
     }
-
+    equipmentListCache = data;
+    equipmentListFetchedAt = Date.now();
     return data;
-  } catch (error: any) {
-    clearTimeout(timeoutId);
-    if (error.name === 'AbortError') {
-      throw new Error('Equipment outage request timed out after 10 seconds');
-    }
-    throw error;
+  } catch (error) {
+    // Enrichment only — serve stale data (or nothing) rather than fail the outage lookup
+    console.error('Failed to fetch equipment list:', error instanceof Error ? error.message : error);
+    return equipmentListCache ?? [];
   }
 }
