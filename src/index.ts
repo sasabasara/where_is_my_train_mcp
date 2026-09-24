@@ -80,7 +80,8 @@ const nextTrainsOutputSchema = standardResponseShape(
       arrivalTimestamp: z.number().nullable().optional(),
       station: z.string().optional(),
       stopId: z.string().optional(),
-      tripId: z.string().optional()
+      tripId: z.string().optional(),
+      confirmed: z.boolean().optional()
     }).passthrough()).optional(),
     count: z.number().optional(),
     ambiguous: z.boolean().optional(),
@@ -394,7 +395,7 @@ export function createMcpServer() {
     "next_trains",
     {
       title: "Next Trains",
-      description: "Real-time train arrivals at a station from live MTA feeds: line, direction (the MTA platform label, e.g. \"Uptown\", \"Manhattan\", \"Coney Island\"), destination, and predicted arrival time (Unix ms). Trains that end their run at the station are excluded. If a name matches several different stations (e.g. \"23 St\"), returns ambiguous=true with options instead of arrivals — ask the rider which one, then call again with stop_id",
+      description: "Real-time train arrivals at a station from live MTA feeds: line, direction (the MTA platform label, e.g. \"Uptown\", \"Manhattan\", \"Coney Island\"), destination, and predicted arrival time (Unix ms). Trains that end their run at the station are excluded. Arrivals with confirmed=true are real trains already en route: for the next several minutes, trust them over planned-work or reroute alerts that say the line isn't stopping here. If a name matches several different stations (e.g. \"23 St\"), returns ambiguous=true with options instead of arrivals — ask the rider which one, then call again with stop_id",
       inputSchema: {
         station: z.string().optional().describe("Station name to get arrivals for"),
         stop_id: z.string().optional().describe("GTFS stop ID from find_station/nearest_station (e.g. \"635\"); takes precedence over station"),

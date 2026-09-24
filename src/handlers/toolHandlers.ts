@@ -243,7 +243,10 @@ export async function handleNextTrains(args: NextTrainsArgs): Promise<ToolRespon
           arrivalTimestamp,
           station: getStationInfo(base)?.name ?? stationName,
           stopId: update.stopId,
-          tripId: trip.tripId
+          tripId: trip.tripId,
+          // NYCT extension: true = a real train has been dispatched on this trip;
+          // false = a schedule placeholder that may not run as shown
+          confirmed: Boolean(trip['.nyctTripDescriptor']?.isAssigned)
         });
       }
     }
