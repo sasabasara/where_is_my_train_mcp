@@ -160,10 +160,10 @@ function resolveStation(query: string, stopId: string, line?: string): ResolvedS
   const matches = StationMatcher.findBestMatches(query, stopsData);
   if (matches.length === 0) return { kind: 'not_found', message: `No stations found matching "${query}"` };
 
-  // Best-scoring matches, plus major hubs whose name starts with the query: "14th st" should
-  // also offer 14 St-Union Sq, and "atlantic ave" should offer Atlantic Av-Barclays Ctr
+  // Best-scoring matches, plus any major hub the name matched: "14th st" should also offer
+  // 14 St-Union Sq, "atlantic ave" Atlantic Av-Barclays Ctr, "42nd st" Grand Central-42 St
   const topScore = matches[0].score;
-  const shortlist = matches.filter(m => m.score === topScore || (m.isHub && m.matchType === 'partial_starts'));
+  const shortlist = matches.filter(m => m.score === topScore || m.isHub);
   let candidates = StationMatcher.groupByComplex(shortlist, complexOf);
 
   if (line) {
@@ -276,7 +276,7 @@ export async function handleNextTrains(args: NextTrainsArgs): Promise<ToolRespon
     if (args.line && arrivals.length === 0) {
       const complex = getComplexStations(parentIds[0]);
       if (complex.length > 0 && !complex.some(s => stationServesLine(s, args.line!))) {
-        notes.push(`The ${args.line.toUpperCase()} doesn't normally stop at ${stationName} (daytime lines: ${getComplexRoutes(parentIds[0]).join(' ')}).`);
+        notes.push(`The ${args.line.toUpperCase()} isn't a daytime line at ${stationName} (daytime lines: ${getComplexRoutes(parentIds[0]).join(' ')}); night and weekend service can differ.`);
       }
     }
     if (arrivals.length === 0) {

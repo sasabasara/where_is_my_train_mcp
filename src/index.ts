@@ -529,7 +529,7 @@ export function createMcpServer() {
     "nearest_station",
     {
       title: "Nearest Station",
-      description: "Find the subway stations closest to GPS coordinates, sorted by straight-line distance in meters, with daytime lines and wheelchair accessibility. Requires lat/lon — convert addresses or landmarks to coordinates first",
+      description: "Find the subway stations closest to GPS coordinates, sorted by straight-line distance in meters, with daytime lines and wheelchair accessibility. Requires lat/lon. For landmarks, neighborhoods or addresses, use your own knowledge of their coordinates; if the place is obscure or ambiguous, ask the rider for a nearby cross street first",
       inputSchema: {
         lat: z.number().optional().describe("Latitude coordinate (required)"),
         lon: z.number().optional().describe("Longitude coordinate (required)"),

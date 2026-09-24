@@ -245,5 +245,70 @@
     "ada_notes": null,
     "gtfs_latitude": "40.886037",
     "gtfs_longitude": "-73.878751"
+  },
+  {
+    "gtfs_stop_id": "D16",
+    "complex_id": "609",
+    "stop_name": "42 St-Bryant Pk",
+    "borough": "M",
+    "daytime_routes": "B D F M",
+    "north_direction_label": "Uptown",
+    "south_direction_label": "Downtown",
+    "ada": "0",
+    "ada_notes": null,
+    "gtfs_latitude": "40.754222",
+    "gtfs_longitude": "-73.984569"
+  },
+  {
+    "gtfs_stop_id": "631",
+    "complex_id": "610",
+    "stop_name": "Grand Central-42 St",
+    "borough": "M",
+    "daytime_routes": "4 5 6",
+    "north_direction_label": "Uptown",
+    "south_direction_label": "Downtown",
+    "ada": "1",
+    "ada_notes": null,
+    "gtfs_latitude": "40.751776",
+    "gtfs_longitude": "-73.976848"
+  },
+  {
+    "gtfs_stop_id": "723",
+    "complex_id": "610",
+    "stop_name": "Grand Central-42 St",
+    "borough": "M",
+    "daytime_routes": "7",
+    "north_direction_label": "Queens",
+    "south_direction_label": "Hudson Yards",
+    "ada": "1",
+    "ada_notes": null,
+    "gtfs_latitude": "40.751431",
+    "gtfs_longitude": "-73.976041"
+  },
+  {
+    "gtfs_stop_id": "724",
+    "complex_id": "609",
+    "stop_name": "5 Av",
+    "borough": "M",
+    "daytime_routes": "7",
+    "north_direction_label": "Queens",
+    "south_direction_label": "Hudson Yards",
+    "ada": "0",
+    "ada_notes": null,
+    "gtfs_latitude": "40.753821",
+    "gtfs_longitude": "-73.981963"
+  },
+  {
+    "gtfs_stop_id": "901",
+    "complex_id": "610",
+    "stop_name": "Grand Central-42 St",
+    "borough": "M",
+    "daytime_routes": "S",
+    "north_direction_label": "Times Square",
+    "south_direction_label": "Last Stop",
+    "ada": "1",
+    "ada_notes": null,
+    "gtfs_latitude": "40.752769",
+    "gtfs_longitude": "-73.979189"
   }
 ]
