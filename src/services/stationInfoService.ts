@@ -153,14 +153,31 @@ export function directionLabel(stopId: string): string | null {
 }
 
 /**
+ * A rider's direction reduced to its key words: "Manhattan-bound", "to the Bronx", "northbound"
+ * → "manhattan", "bronx", "north". "Inbound"/"outbound" are MTA platform labels and stay as they are.
+ */
+export function normalizeDirection(requested: string): string {
+  let q = requested.trim().toLowerCase().replace(/^((to|towards?|the)\s+)+/, '');
+  if (!/^(in|out)bound$/.test(q)) q = q.replace(/[\s-]*bound$/, '');
+  return q.trim();
+}
+
+/** "N", "north", "northbound" → 'N'; the same for south; anything else → null. */
+export function compassDirection(requested: string): 'N' | 'S' | null {
+  const q = normalizeDirection(requested);
+  if (q === 'n' || q === 'north') return 'N';
+  if (q === 's' || q === 'south') return 'S';
+  return null;
+}
+
+/**
  * Does a platform match what the rider asked for? Checks the MTA label
  * ("uptown" ⊂ "Uptown & The Bronx", "queens", "coney island") and north/south as a fallback.
  */
 export function directionMatches(stopId: string, requested: string): boolean {
-  const q = requested.trim().toLowerCase();
-  const suffix = stopId.slice(-1);
-  if (['north', 'northbound', 'n'].includes(q)) return suffix === 'N';
-  if (['south', 'southbound', 's'].includes(q)) return suffix === 'S';
+  const compass = compassDirection(requested);
+  if (compass) return stopId.slice(-1) === compass;
+  const q = normalizeDirection(requested);
   const label = directionLabel(stopId)?.toLowerCase() ?? '';
-  return label.includes(q);
+  return q !== '' && label.includes(q);
 }

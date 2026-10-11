@@ -6,20 +6,20 @@ import { pipeline } from 'stream/promises';
 import StreamZip from 'node-stream-zip';
 import { parseCSV } from '../utils/csvParser.js';
 
-// Static subway GTFS. Only stops.txt and transfers.txt are used (station names/locations
-// and transfer links); they are identical in the 20MB "supplemented" feed, so we use the
-// 5.6MB regular feed and refresh it rarely.
+// Static subway GTFS. Only stops.txt, transfers.txt and routes.txt are used (station
+// names/locations, transfer links, line names/colors); they are identical in the 20MB
+// "supplemented" feed, so we use the 5.6MB regular feed and refresh it rarely.
 const GTFS_URL = 'https://rrgtfsfeeds.s3.amazonaws.com/gtfs_subway.zip';
 const CACHE_DIR = path.join(process.cwd(), 'cache/gtfs_regular');
 const CACHE_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
 const DOWNLOAD_TIMEOUT_MS = 60 * 1000;
-const REQUIRED_FILES = ['stops.txt', 'transfers.txt'];
+const REQUIRED_FILES = ['stops.txt', 'transfers.txt', 'routes.txt'];
 
 export class GTFSManager {
   /**
-   * Stops and transfers from the local cache, downloading first if the cache is missing or older than a week.
+   * Stops, transfers and routes from the local cache, downloading first if the cache is missing or older than a week.
    */
-  public static async getGTFSData(): Promise<{ stops: any[]; transfers: any[] }> {
+  public static async getGTFSData(): Promise<{ stops: any[]; transfers: any[]; routes: any[] }> {
     if (!(await this.isCacheValid())) {
       await this.downloadAndExtract();
     }
@@ -68,10 +68,10 @@ export class GTFSManager {
     }
   }
 
-  private static async loadCachedData(): Promise<{ stops: any[]; transfers: any[] }> {
-    const [stops, transfers] = await Promise.all(
+  private static async loadCachedData(): Promise<{ stops: any[]; transfers: any[]; routes: any[] }> {
+    const [stops, transfers, routes] = await Promise.all(
       REQUIRED_FILES.map(async file => parseCSV(await fs.readFile(path.join(CACHE_DIR, file), 'utf-8')))
     );
-    return { stops, transfers };
+    return { stops, transfers, routes };
   }
 }

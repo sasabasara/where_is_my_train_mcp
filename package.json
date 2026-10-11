@@ -1,6 +1,6 @@
 {
   "name": "where-is-my-train-mcp",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "MCP server for NYC subway real-time information using MTA GTFS feeds",
   "type": "module",
   "scripts": {
@@ -53,7 +53,7 @@
     "server": {
       "name": "where-is-my-train-mta",
       "description": "Real-time NYC subway assistant. Use 'next_trains' for live arrivals (station name or stop_id, optional line and direction), 'service_disruptions'/'subway_alerts' for delays and planned work, 'nearest_station' for stations near coordinates, 'find_station' and 'station_transfers' for station info, and 'elevator_and_escalator_status' for accessibility.",
-      "version": "1.1.1"
+      "version": "1.1.2"
     }
   }
 }

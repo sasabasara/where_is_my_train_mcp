@@ -14,14 +14,12 @@ const app = express();
 // Railway terminates TLS at its proxy, so trust the first hop to read X-Forwarded-For
 app.set("trust proxy", 1);
 
-// Parse JSON bodies for all routes
-app.use(express.json());
-
-// CORS middleware for cross-origin clients
+// CORS middleware for cross-origin clients. Allowed headers echo the preflight request, so
+// headers added by newer MCP versions work without listing each one (no cookies/credentials here)
 app.use((req, res, next) => {
     res.header("Access-Control-Allow-Origin", "*");
     res.header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-    res.header("Access-Control-Allow-Headers", "Content-Type, mcp-session-id, mcp-protocol-version");
+    res.header("Access-Control-Allow-Headers", req.header("Access-Control-Request-Headers") ?? "Content-Type, mcp-session-id, mcp-protocol-version");
     res.header("Access-Control-Expose-Headers", "mcp-session-id");
 
     if (req.method === "OPTIONS") {
@@ -93,6 +91,9 @@ app.use((req, res, next) => {
 
     next();
 });
+
+// Parse JSON bodies for all routes (after logging, so unparseable requests are logged too)
+app.use(express.json());
 
 // Per-IP rate limit on the MCP endpoint to absorb casual abuse
 const mcpLimiter = rateLimit({
@@ -322,6 +323,23 @@ app.get("/.well-known/mcp/server-card.json", (req, res) => {
                 { uri: "subway://major-stations", name: "major_stations", description: "Major NYC Subway Transfer Stations" }
             ]
         }
+    });
+});
+
+// Errors from express.json (invalid JSON, body too large) or a route: answer in JSON-RPC
+// instead of Express's HTML error page, which includes a stack trace
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (res.headersSent) return next(err);
+    const parseError = err?.type === "entity.parse.failed";
+    const status = err?.status >= 400 && err?.status < 500 ? err.status : 500;
+    res.status(status).json({
+        jsonrpc: "2.0",
+        error: parseError
+            ? { code: -32700, message: "Parse error: request body is not a valid JSON-RPC message" }
+            : status < 500 && err?.expose
+                ? { code: -32600, message: `Invalid request: ${err.message}` }
+                : { code: -32603, message: "Internal error" },
+        id: null
     });
 });
 

@@ -9,9 +9,11 @@ import {
   stationServesLine,
   directionLabel,
   directionMatches,
+  normalizeDirection,
+  compassDirection,
   sortRoutes
 } from "../services/stationInfoService.js";
-import { StationMatcher, getStopsData, getTransfersData, getStopName, ensureDataLoaded } from "../services/stationService.js";
+import { StationMatcher, getStopsData, getTransfersData, getStopName, isKnownStop, ensureDataLoaded } from "../services/stationService.js";
 import { calculateDistance } from "../utils/index.js";
 import { ServiceDisruptionAnalyzer } from "../services/serviceDisruptions.js";
 import {
@@ -74,7 +76,7 @@ function complexAccessibility(stations: StationInfo[]): StationInfo['accessibili
 }
 
 /** Station summary used by find_station / nearest_station / ambiguity responses. */
-function describeComplex(stopId: string, fallbackName: string) {
+export function describeComplex(stopId: string, fallbackName: string) {
   const complex = getComplexStations(stopId);
   const info = getStationInfo(stopId);
   return {
@@ -199,7 +201,10 @@ export async function handleNextTrains(args: NextTrainsArgs): Promise<ToolRespon
   await Promise.all([ensureDataLoaded(), ensureStationInfoLoaded()]);
 
   const stationQuery = args?.station?.trim() || "";
-  const stopIdArg = args?.stop_id?.trim().toUpperCase().replace(/[NS]$/, '') || "";
+  const stopIdRaw = args?.stop_id?.trim().toUpperCase() || "";
+  const stopIdArg = stopIdRaw.replace(/[NS]$/, '');
+  // A platform ID ("635N") means that platform's trains only; station IDs never end in N/S
+  const platform = stopIdRaw !== stopIdArg ? stopIdRaw : null;
   if (!stationQuery && !stopIdArg) {
     return createStandardResponse(null, "Please provide a station name or stop_id.", true);
   }
@@ -226,11 +231,13 @@ export async function handleNextTrains(args: NextTrainsArgs): Promise<ToolRespon
       if (args.line && !routeMatchesLine(trip.routeId, args.line)) continue;
 
       const updates: any[] = entity.tripUpdate.stopTimeUpdate || [];
-      const terminal = updates[updates.length - 1];
+      // Where riders get off: the last update that is a station (see isKnownStop)
+      const terminal = [...updates].reverse().find(u => isKnownStop(u.stopId)) ?? updates[updates.length - 1];
       const terminalInfo = terminal?.stopId ? getStationInfo(terminal.stopId) : undefined;
 
       for (const update of updates) {
         if (!update.stopId) continue;
+        if (platform && update.stopId !== platform) continue;
         const base = update.stopId.replace(/[NS]$/, '');
         if (!parentIdSet.has(base)) continue;
         // The train ends its run here — nothing to board
@@ -267,13 +274,15 @@ export async function handleNextTrains(args: NextTrainsArgs): Promise<ToolRespon
 
     const notes: string[] = [];
     let shown = arrivals;
-    const direction = args.direction?.trim();
-    if (direction) {
-      const q = direction.toLowerCase();
+    const direction = args.direction?.trim() ?? '';
+    const wanted = normalizeDirection(direction);
+    if (wanted) {
+      // "N"/"south" pick the platform direction only; as text, "n" would match nearly every destination
+      const byName = !compassDirection(direction);
+      const startsWord = (text: string | null) => ` ${(text ?? '').toLowerCase()}`.includes(` ${wanted}`);
       const matching = arrivals.filter(a =>
         directionMatches(a.stopId, direction) ||
-        a.destination.toLowerCase().includes(q) ||
-        (a.destinationBorough ?? '').toLowerCase().includes(q)
+        (byName && (startsWord(a.destination) || startsWord(a.destinationBorough)))
       );
       if (matching.length > 0) {
         shown = matching;
@@ -419,7 +428,7 @@ export async function handleNearestStation(args: NearestStationArgs): Promise<To
 
   try {
     const stopsData = getStopsData();
-    const radius = args.radius || 1000;
+    const radius = args.radius && args.radius > 0 ? args.radius : 1000;
     const limit = Math.min(Math.max(Math.trunc(args.limit ?? 5) || 5, 1), 20);
 
     // Nearest platform per complex, so Union Sq shows up once, not three times
@@ -428,7 +437,6 @@ export async function handleNearestStation(args: NearestStationArgs): Promise<To
       if (stop.location_type !== '1' || !stop.stop_lat || !stop.stop_lon) continue;
       const lat = Number(stop.stop_lat), lon = Number(stop.stop_lon);
       const distance = Math.round(calculateDistance(args.lat, args.lon, lat, lon));
-      if (distance > radius) continue;
 
       const key = complexOf(stop.stop_id) ?? stop.stop_id;
       const existing = byComplex.get(key);
@@ -437,8 +445,22 @@ export async function handleNearestStation(args: NearestStationArgs): Promise<To
       }
     }
 
-    let nearby = [...byComplex.values()]
-      .sort((a, b) => a.distance - b.distance)
+    let candidates = [...byComplex.values()].sort((a, b) => a.distance - b.distance);
+    if (args.accessible_only) {
+      candidates = candidates.filter(s => {
+        const accessibility = complexAccessibility(getComplexStations(s.stopId));
+        return accessibility === 'full' || accessibility === 'partial';
+      });
+    }
+    if (args.service_filter?.length) {
+      candidates = candidates.filter(s =>
+        args.service_filter!.some(line => getComplexStations(s.stopId).some(st => stationServesLine(st, line)))
+      );
+    }
+
+    const nearby = candidates
+      .filter(s => s.distance <= radius)
+      .slice(0, limit)
       .map(s => ({
         ...describeComplex(s.stopId, s.stopName),
         stopId: s.stopId,
@@ -446,17 +468,15 @@ export async function handleNearestStation(args: NearestStationArgs): Promise<To
         coordinates: { lat: s.lat, lon: s.lon }
       }));
 
-    if (args.accessible_only) {
-      nearby = nearby.filter(s => s.accessibility === 'full' || s.accessibility === 'partial');
+    // Nothing in range: say how far the closest (matching) station is, or that the coordinates are off
+    let hint = '';
+    const closest = candidates[0];
+    if (nearby.length === 0 && closest) {
+      const name = getStationInfo(closest.stopId)?.name ?? closest.stopName;
+      hint = closest.distance > 50000
+        ? `. The closest station is ${Math.round(closest.distance / 1000)} km away — check the coordinates (New York City is around lat 40.7, lon -74.0)`
+        : `. The closest is ${name} (stopId ${closest.stopId}), ${closest.distance}m away`;
     }
-    if (args.service_filter?.length) {
-      nearby = nearby.filter(s =>
-        args.service_filter!.some(line => getComplexStations(s.stopId).some(st => stationServesLine(st, line)))
-      );
-    }
-
-    nearby = nearby.slice(0, limit);
-    const hint = nearby.length === 0 ? '. Try a larger radius (e.g. 3000m) — this spot may not be near the subway' : '';
     return createStandardResponse(nearby, `Found ${nearby.length} stations within ${radius}m${hint}`);
   } catch (error) {
     return createStandardResponse(null, "Nearest station search temporarily unavailable.", true);
@@ -476,10 +496,13 @@ export async function handleElevatorEscalatorStatus(args: ElevatorEscalatorStatu
     if (args.equipment_type === 'elevator') filtered = filtered.filter(item => item.equipmenttype === 'EL');
     if (args.equipment_type === 'escalator') filtered = filtered.filter(item => item.equipmenttype === 'ES');
 
-    if (args.station) {
-      // Normalize both sides so "union square" / "34th st" match "14 St-Union Sq" / "34 St-Herald Sq"
-      const q = StationMatcher.normalizeStationName(args.station);
-      filtered = filtered.filter(item => StationMatcher.normalizeStationName(item.station).includes(q));
+    // Normalize both sides so "union square" / "34th st" match "14 St-Union Sq" / "34 St-Herald Sq",
+    // and match at a word start so "25th st" doesn't match "125 St"
+    const stationQuery = args.station?.trim() ? ` ${StationMatcher.normalizeStationName(args.station)}` : null;
+    const atStation = (name: string | undefined) =>
+      stationQuery !== null && ` ${StationMatcher.normalizeStationName(name ?? '')}`.includes(stationQuery);
+    if (stationQuery) {
+      filtered = filtered.filter(item => atStation(item.station));
     }
 
     if (args.ada_only) {
@@ -501,8 +524,28 @@ export async function handleElevatorEscalatorStatus(args: ElevatorEscalatorStatu
       alternativeRoute: equipmentById.get(item.equipment)?.alternativeroute || null
     }));
 
-    const result = { total: filtered.length, returned: outages.length, outages };
-    return createStandardResponse(result, `Found ${result.total} equipment outages${result.total > result.returned ? ` (showing ${result.returned})` : ''}`);
+    const result: Record<string, unknown> = { total: filtered.length, returned: outages.length, outages };
+    let message = `Found ${filtered.length} equipment outages${filtered.length > outages.length ? ` (showing ${outages.length})` : ''}`;
+
+    // What the MTA has at the matching stations, so "no outages" isn't mistaken for "elevators
+    // working" at a station that has none (skipped if the equipment list couldn't be fetched)
+    if (stationQuery && equipmentList.length > 0) {
+      const listed = new Map<string, { station: string; lines: string; elevators: number; escalators: number }>();
+      for (const e of equipmentList) {
+        if (e.isactive !== 'Y' || !atStation(e.station)) continue;
+        const key = `${e.station}|${e.trainno}`;
+        const entry = listed.get(key) ?? { station: e.station, lines: e.trainno, elevators: 0, escalators: 0 };
+        if (e.equipmenttype === 'EL') entry.elevators++;
+        if (e.equipmenttype === 'ES') entry.escalators++;
+        listed.set(key, entry);
+      }
+      result.equipmentListed = [...listed.values()];
+      message = listed.size === 0
+        ? `No elevators or escalators are listed at any station matching "${args.station}": the station may have none (not accessible), or the name may differ`
+        : `${message} at stations matching "${args.station}"; equipmentListed shows each station's elevators and escalators (stations not listed have none)`;
+    }
+
+    return createStandardResponse(result, message);
   } catch (error) {
     return createStandardResponse(null, "Elevator and escalator status temporarily unavailable.", true);
   }

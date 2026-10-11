@@ -155,6 +155,23 @@ describe('elevator_and_escalator_status', () => {
     expect(data.outages.map((o: any) => o.station)).toEqual(['34 St-Hudson Yards']);
   });
 
+  it('matches whole words only ("25th st" is not 125 St)', async () => {
+    const { data, message } = payload(await handleElevatorEscalatorStatus({ station: '25th st', outage_type: 'all' }));
+    expect(data.total).toBe(0);
+    expect(data.equipmentListed).toEqual([]);
+    expect(message).toMatch(/No elevators or escalators are listed at any station matching "25th st"/);
+  });
+
+  it('lists the equipment at matching stations, so 0 outages is not read as "no elevators"', async () => {
+    const { data, message } = payload(await handleElevatorEscalatorStatus({ station: '125 st', equipment_type: 'elevator' }));
+    expect(data.total).toBe(0); // its elevator outage is upcoming, not current
+    expect(data.equipmentListed).toEqual([
+      { station: '125 St', lines: '1', elevators: 0, escalators: 1 },
+      { station: '125 St', lines: 'A/C/B/D', elevators: 2, escalators: 0 }
+    ]);
+    expect(message).toMatch(/Found 0 equipment outages at stations matching "125 st"/);
+  });
+
   it('includes return estimate and the MTA alternative route', async () => {
     const { data } = payload(await handleElevatorEscalatorStatus({ station: 'queensbridge' }));
     expect(data.outages[0]).toMatchObject({ equipmentId: 'EL407', estimatedReturn: '09/24/2026 06:00:00 AM' });

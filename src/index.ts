@@ -8,11 +8,19 @@ import {
   handleStationTransfers,
   handleNearestStation,
   handleServiceDisruptions,
-  handleElevatorEscalatorStatus
+  handleElevatorEscalatorStatus,
+  describeComplex
 } from "./handlers/toolHandlers.js";
+import { ensureDataLoaded, getRoutesData, getStopName } from "./services/stationService.js";
+import { ensureStationInfoLoaded, getComplexStations } from "./services/stationInfoService.js";
 
 import { ToolResponse } from "./types/index.js";
 import { SERVER_VERSION } from "./version.js";
+
+// Major transfer complexes, each by one of its GTFS stop IDs (Times Sq, Grand Central, Herald Sq,
+// Union Sq, Columbus Circle, Lexington Av/59 St, Atlantic Av-Barclays Ctr, Fulton St,
+// Jay St-MetroTech, World Trade Center, Broadway Junction)
+const MAJOR_STATION_IDS = ['R16', '631', 'D17', '635', 'A24', 'R11', '235', 'A38', 'A41', 'E01', 'A51'];
 
 // Handlers wrap their JSON in `content[0].text`; when an outputSchema is declared
 // the SDK also expects the parsed payload as `structuredContent`. Parse it once here.
@@ -238,77 +246,50 @@ export function createMcpServer() {
     version: SERVER_VERSION
   });
 
-  // Subway line data for resources
-  const subwayLines = [
-    { id: "1", name: "1", color: "#EE352E", division: "IRT" },
-    { id: "2", name: "2", color: "#EE352E", division: "IRT" },
-    { id: "3", name: "3", color: "#EE352E", division: "IRT" },
-    { id: "4", name: "4", color: "#00933C", division: "IRT" },
-    { id: "5", name: "5", color: "#00933C", division: "IRT" },
-    { id: "6", name: "6", color: "#00933C", division: "IRT" },
-    { id: "7", name: "7", color: "#B933AD", division: "IRT" },
-    { id: "A", name: "A", color: "#0039A6", division: "IND" },
-    { id: "C", name: "C", color: "#0039A6", division: "IND" },
-    { id: "E", name: "E", color: "#0039A6", division: "IND" },
-    { id: "B", name: "B", color: "#FF6319", division: "IND" },
-    { id: "D", name: "D", color: "#FF6319", division: "IND" },
-    { id: "F", name: "F", color: "#FF6319", division: "IND" },
-    { id: "M", name: "M", color: "#FF6319", division: "IND" },
-    { id: "G", name: "G", color: "#6CBE45", division: "IND" },
-    { id: "J", name: "J", color: "#996633", division: "BMT" },
-    { id: "Z", name: "Z", color: "#996633", division: "BMT" },
-    { id: "L", name: "L", color: "#A7A9AC", division: "BMT" },
-    { id: "N", name: "N", color: "#FCCC0A", division: "BMT" },
-    { id: "Q", name: "Q", color: "#FCCC0A", division: "BMT" },
-    { id: "R", name: "R", color: "#FCCC0A", division: "BMT" },
-    { id: "W", name: "W", color: "#FCCC0A", division: "BMT" },
-    { id: "S", name: "S (42nd St Shuttle)", color: "#808183", division: "Shuttle" },
-    { id: "SI", name: "Staten Island Railway", color: "#0039A6", division: "SIR" }
-  ];
-
-  // Register Resources
+  // Register Resources. Both are built from MTA data (static GTFS routes.txt, the MTA station
+  // list), so line colors, names and each hub's lines stay current
   server.registerResource(
     "subway_lines",
     "subway://lines",
     { description: "NYC Subway Lines Reference", mimeType: "application/json" },
-    async (uri) => ({
-      contents: [{
-        uri: uri.href,
-        mimeType: "application/json",
-        text: JSON.stringify({
-          description: "NYC Subway Lines Reference",
-          lastUpdated: new Date().toISOString(),
-          lines: subwayLines
-        })
-      }]
-    })
+    async (uri) => {
+      await ensureDataLoaded();
+      const lines = getRoutesData().map(route => ({
+        id: route.route_id,             // feed route ID, e.g. "6X", "GS"
+        name: route.route_short_name,   // what riders see, e.g. "6", "S"
+        longName: route.route_long_name,
+        color: route.route_color ? `#${route.route_color}` : null,
+        textColor: route.route_text_color ? `#${route.route_text_color}` : null
+      }));
+      return {
+        contents: [{
+          uri: uri.href,
+          mimeType: "application/json",
+          text: JSON.stringify({ description: "NYC Subway Lines Reference (MTA static GTFS)", lines })
+        }]
+      };
+    }
   );
 
   server.registerResource(
     "major_stations",
     "subway://major-stations",
     { description: "Major NYC Subway Transfer Stations", mimeType: "application/json" },
-    async (uri) => ({
-      contents: [{
-        uri: uri.href,
-        mimeType: "application/json",
-        text: JSON.stringify({
-          description: "Major NYC Subway Transfer Stations",
-          stations: [
-            { name: "Times Sq-42 St", lines: ["1", "2", "3", "7", "N", "Q", "R", "W", "S"], borough: "Manhattan" },
-            { name: "34 St-Herald Sq", lines: ["B", "D", "F", "M", "N", "Q", "R", "W"], borough: "Manhattan" },
-            { name: "14 St-Union Sq", lines: ["4", "5", "6", "L", "N", "Q", "R", "W"], borough: "Manhattan" },
-            { name: "Atlantic Av-Barclays Ctr", lines: ["2", "3", "4", "5", "B", "D", "N", "Q", "R"], borough: "Brooklyn" },
-            { name: "Fulton St", lines: ["2", "3", "4", "5", "A", "C", "J", "Z"], borough: "Manhattan" },
-            { name: "Jay St-MetroTech", lines: ["A", "C", "F", "R"], borough: "Brooklyn" },
-            { name: "59 St-Columbus Circle", lines: ["1", "A", "B", "C", "D"], borough: "Manhattan" },
-            { name: "Grand Central-42 St", lines: ["4", "5", "6", "7", "S"], borough: "Manhattan" },
-            { name: "Chambers St", lines: ["1", "2", "3", "A", "C"], borough: "Manhattan" },
-            { name: "Broadway Junction", lines: ["A", "C", "J", "Z", "L"], borough: "Brooklyn" }
-          ]
-        })
-      }]
-    })
+    async (uri) => {
+      await Promise.all([ensureDataLoaded(), ensureStationInfoLoaded()]);
+      const stations = MAJOR_STATION_IDS.map(stopId => ({
+        ...describeComplex(stopId, getStopName(stopId)),
+        // Every station name in the complex, e.g. Park Place for the 2/3 at World Trade Center
+        stations: [...new Set(getComplexStations(stopId).map(s => s.name))]
+      }));
+      return {
+        contents: [{
+          uri: uri.href,
+          mimeType: "application/json",
+          text: JSON.stringify({ description: "Major NYC Subway Transfer Stations", stations })
+        }]
+      };
+    }
   );
 
   // Register Prompts
@@ -399,8 +380,8 @@ export function createMcpServer() {
       description: "Real-time train arrivals at a station from live MTA feeds: line, direction (the MTA platform label, e.g. \"Uptown\", \"Manhattan\", \"Coney Island\"), destination, and predicted arrival time (Unix ms). Trains that end their run at the station are excluded. Arrivals with confirmed=true are real trains already en route: for the next several minutes, trust them over planned-work or reroute alerts that say the line isn't stopping here. If a name matches several different stations (e.g. \"23 St\"), returns ambiguous=true with options instead of arrivals — ask the rider which one, then call again with stop_id",
       inputSchema: {
         station: z.string().optional().describe("Station name to get arrivals for"),
-        stop_id: z.string().optional().describe("GTFS stop ID from find_station/nearest_station (e.g. \"635\"); takes precedence over station"),
-        direction: z.string().optional().describe("Direction as riders say it: \"uptown\", \"downtown\", \"manhattan\", \"brooklyn\", \"queens\", \"bronx\", a terminal like \"coney island\", or \"north\"/\"south\". Matched against the MTA platform label, the train's destination, and the destination's borough"),
+        stop_id: z.string().optional().describe("GTFS stop ID from find_station/nearest_station (e.g. \"635\"); takes precedence over station. A platform ID (\"635N\") returns only that platform's trains"),
+        direction: z.string().optional().describe("Direction as riders say it: \"uptown\", \"downtown\", \"manhattan\", \"brooklyn\", \"queens\", \"bronx\", a terminal like \"coney island\", or \"north\"/\"south\" (\"N\"/\"S\"). Matched against the MTA platform label, the train's destination, and the destination's borough"),
         limit: z.number().optional().describe("Maximum number of arrivals to return (1-10, default 5)"),
         line: z.string().optional().describe("Filter by line, e.g. \"6\" (includes 6X express), \"S\" for shuttles")
       },
@@ -603,9 +584,9 @@ export function createMcpServer() {
     "elevator_and_escalator_status",
     {
       title: "Elevator and Escalator Status",
-      description: "Elevator and escalator outages at subway stations. Each outage includes station, lines, what the equipment serves, ADA status, reason, outage start and estimated return (New York local time), and the MTA's suggested alternative route when one exists",
+      description: "Elevator and escalator outages at subway stations. Each outage includes station, lines, what the equipment serves, ADA status, reason, outage start and estimated return (New York local time), and the MTA's suggested alternative route when one exists. With station, equipmentListed also shows how many elevators and escalators each matching station has (a station with none is not listed)",
       inputSchema: {
-        station: z.string().optional().describe("Filter by station name (supports partial matching)"),
+        station: z.string().optional().describe("Filter by station name; matches whole words, e.g. \"union square\" or \"34th st\""),
         equipment_type: z.enum(["elevator", "escalator", "all"]).optional().describe("Filter by equipment type (default: all)"),
         ada_only: z.boolean().optional().describe("Show only ADA-accessible equipment (default: false)"),
         outage_type: z.enum(["current", "upcoming", "all"]).optional().describe("Filter by outage timing (default: current)")

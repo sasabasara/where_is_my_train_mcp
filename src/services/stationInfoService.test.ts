@@ -3,6 +3,8 @@ import fs from 'fs';
 import path from 'path';
 import {
   setStations,
+  normalizeDirection,
+  compassDirection,
   getComplexRoutes,
   routeMatchesLine,
   stationServesLine,
@@ -67,6 +69,19 @@ describe('directions', () => {
     expect(directionMatches('725N', 'Queens')).toBe(true);
     expect(directionMatches('725N', 'north')).toBe(true);
     expect(directionMatches('725N', 'uptown')).toBe(false);
+  });
+
+  it('understands "-bound", "to the ..." and single-letter compass directions', () => {
+    expect(normalizeDirection('Manhattan-bound')).toBe('manhattan');
+    expect(normalizeDirection('to the Bronx')).toBe('bronx');
+    expect(normalizeDirection('Queens bound')).toBe('queens');
+    expect(normalizeDirection('Inbound')).toBe('inbound');
+    expect(compassDirection('N')).toBe('N');
+    expect(compassDirection('southbound')).toBe('S');
+    expect(compassDirection('uptown')).toBeNull();
+    expect(directionMatches('725N', 'Queens-bound')).toBe(true);
+    expect(directionMatches('725S', 'n')).toBe(false);
+    expect(directionMatches('635N', 'bound')).toBe(false);
   });
 });
 

@@ -4,7 +4,7 @@ import path from 'path';
 import { parseCSV } from '../utils/csvParser.js';
 
 // Real rows from the MTA Subway Stations dataset and GTFS stops.txt (captured 2026-09-24;
-// 726, B10, R14 added 2026-10-11)
+// 726, B10, R14, H04, H12 added 2026-10-11)
 const fixtureDir = path.join(__dirname, '../__fixtures__');
 const stationRows = JSON.parse(fs.readFileSync(path.join(fixtureDir, 'stations.json'), 'utf-8'));
 const stops = parseCSV(fs.readFileSync(path.join(fixtureDir, 'stops.txt'), 'utf-8'));
@@ -38,6 +38,12 @@ vi.mock('../services/mtaService.js', () => ({
       tripTo('Q', 't10', 'R20S', 9, 'D43S'),  // downtown to Coney Island (Brooklyn), terminates there
       trip('D', 't11', 'D43N', 3),            // departs Coney Island
       tripTo('7', 't13', '726N', 4, '701N'),  // departs Hudson Yards, the dataset's "Last Stop" platform
+      // Rockaway Park shuttle as the feed sends it: ends at relay track H19N, past Broad Channel
+      { tripUpdate: { trip: { routeId: 'H', tripId: 't14' }, stopTimeUpdate: [
+        { stopId: 'H12N', arrival: { time: inMinutes(3) } },
+        { stopId: 'H04N', arrival: { time: inMinutes(9) } },
+        { stopId: 'H19N', arrival: { time: inMinutes(12) } }
+      ] } },
       { tripUpdate: { trip: { routeId: 'GS', tripId: 't12' }, stopTimeUpdate: [{ stopId: '902N', arrival: { time: inMinutes(2) } }] } } // shuttle ending at Times Sq
     ],
     feedStatus: { successful: 8, failed: 0, failedFeeds: [] }
@@ -54,7 +60,9 @@ vi.mock('../services/stationService.js', async (importOriginal) => {
     ensureDataLoaded: vi.fn(async () => {}),
     getStopsData: () => stops,
     getStopName: (id: string) => stops.find(s => s.stop_id === id.replace(/[NS]$/, ''))?.stop_name ?? id,
-    getTransfersData: () => []
+    getTransfersData: () => [],
+    // Static GTFS has every stop except the relay track H19 the Rockaway Park shuttle ends at
+    isKnownStop: (id: string) => !id.startsWith('H19')
   };
 });
 
@@ -192,6 +200,37 @@ describe('next_trains', () => {
     expect(six).toMatchObject({ station: '23 St-Baruch College', stopIds: ['634'] });
   });
 
+  it('"N" and "s" pick the platform direction, not destinations containing the letter', async () => {
+    const north = payload(await handleNextTrains({ station: 'union sq', direction: 'N' })).data;
+    expect(north.arrivals.map((a: any) => a.tripId).sort()).toEqual(['t1', 't2', 't4', 't9']);
+
+    const south = payload(await handleNextTrains({ station: 'union sq', direction: 's' })).data;
+    expect(south.arrivals.map((a: any) => a.tripId).sort()).toEqual(['t10', 't3']);
+  });
+
+  it('understands "-bound" and "to the ..." directions', async () => {
+    const bronx = payload(await handleNextTrains({ station: 'union sq', direction: 'to the Bronx' })).data;
+    expect(bronx.arrivals.map((a: any) => a.tripId)).toEqual(['t9']);
+
+    const coney = payload(await handleNextTrains({ station: 'union sq', direction: 'Coney Island-bound' })).data;
+    expect(coney.arrivals.map((a: any) => a.tripId)).toEqual(['t10']);
+  });
+
+  it('a platform stop_id ("635N") returns only that platform', async () => {
+    const { data } = payload(await handleNextTrains({ stop_id: '635n' }));
+    expect(data.arrivals.map((a: any) => a.stopId)).toEqual(['635N', '635N', '635N']);
+    expect(data.arrivals.map((a: any) => a.line)).toEqual(['6', '6X', '4']);
+  });
+
+  it('names the last real station as the destination when the feed ends a trip on a relay track', async () => {
+    const beach90 = payload(await handleNextTrains({ station: 'beach 90 st' })).data;
+    expect(beach90.arrivals).toMatchObject([{ line: 'H', destination: 'Broad Channel' }]);
+
+    // ...and the shuttle ends its run at Broad Channel, so it isn't a train to board there
+    const broadChannel = payload(await handleNextTrains({ station: 'broad channel' })).data;
+    expect(broadChannel.arrivals).toEqual([]);
+  });
+
   it('labels trains leaving a terminal with their direction, not "Last Stop"', async () => {
     const { data } = payload(await handleNextTrains({ station: 'hudson yards' }));
     expect(data.arrivals).toMatchObject([{ line: '7', stopId: '726N', direction: 'Queens' }]);
@@ -226,6 +265,24 @@ describe('nearest_station', () => {
   it('service_filter keeps only stations serving the line', async () => {
     const { data } = payload(await handleNearestStation({ ...unionSq, radius: 2000, service_filter: ['F'] }));
     expect(data.map((s: any) => s.name)).toEqual(['23 St', '34 St-Herald Sq']);
+  });
+
+  it('says how far the closest station is when none is in range', async () => {
+    const hudson = payload(await handleNearestStation({ lat: 40.73, lon: -74.03, radius: 500 }));
+    expect(hudson.data).toEqual([]);
+    expect(hudson.message).toMatch(/The closest is .+ \(stopId \w+\), \d+m away/);
+
+    const offMap = payload(await handleNearestStation({ lat: 0, lon: 0 }));
+    expect(offMap.message).toMatch(/km away — check the coordinates/);
+
+    // The closest station that matches the filters (the 7 at 5 Av, in the Bryant Pk complex)
+    const seven = payload(await handleNearestStation({ ...unionSq, radius: 300, service_filter: ['7'] }));
+    expect(seven.message).toMatch(/The closest is 42 St-Bryant Pk \(stopId D16\)/);
+  });
+
+  it('treats a zero or negative radius as the 1000m default', async () => {
+    const { message } = payload(await handleNearestStation({ ...unionSq, radius: -5 }));
+    expect(message).toMatch(/within 1000m/);
   });
 
   it('accessible_only drops inaccessible stations', async () => {

@@ -3,6 +3,7 @@ import type { StationMatch, StationGroup } from "../types/index.js";
 
 let stopsData: any[] = [];
 let transfersData: any[] = [];
+let routesData: any[] = [];
 let stopsById = new Map<string, any>();
 let lastLoadedAt = 0;
 let lastAttemptAt = 0;
@@ -183,11 +184,12 @@ async function load(): Promise<void> {
   lastAttemptAt = Date.now();
 
   try {
-    const { stops, transfers } = await GTFSManager.getGTFSData();
+    const { stops, transfers, routes } = await GTFSManager.getGTFSData();
     if (stops.length === 0) throw new Error('stops.txt is empty');
 
     stopsData = stops;
     transfersData = transfers;
+    routesData = routes;
     stopsById = new Map(stops.map(stop => [stop.stop_id, stop]));
     lastLoadedAt = Date.now();
 
@@ -211,7 +213,20 @@ export function getTransfersData(): any[] {
   return transfersData;
 }
 
+/** Lines from routes.txt: route_id, route_short_name, route_long_name, route_color, ... */
+export function getRoutesData(): any[] {
+  return routesData;
+}
+
 /** Stop or station name for a GTFS stop ID (platform IDs like "635N" included); falls back to the ID. */
 export function getStopName(stopId: string): string {
   return stopsById.get(stopId)?.stop_name ?? stopId;
+}
+
+/**
+ * Whether static GTFS has this stop. The real-time feeds also use IDs that aren't stations,
+ * e.g. the Rockaway Park shuttle ends its trips at relay track H19N, past Broad Channel.
+ */
+export function isKnownStop(stopId: string): boolean {
+  return stopsById.has(stopId);
 }

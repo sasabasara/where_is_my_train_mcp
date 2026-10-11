@@ -349,5 +349,31 @@
     "ada_notes": null,
     "gtfs_latitude": "40.764664",
     "gtfs_longitude": "-73.980658"
+  },
+  {
+    "gtfs_stop_id": "H04",
+    "complex_id": "199",
+    "stop_name": "Broad Channel",
+    "borough": "Q",
+    "daytime_routes": "A S",
+    "north_direction_label": "Inbound",
+    "south_direction_label": "Rockaways",
+    "ada": "0",
+    "ada_notes": null,
+    "gtfs_latitude": "40.608382",
+    "gtfs_longitude": "-73.815925"
+  },
+  {
+    "gtfs_stop_id": "H12",
+    "complex_id": "200",
+    "stop_name": "Beach 90 St",
+    "borough": "Q",
+    "daytime_routes": "A S",
+    "north_direction_label": "Inbound",
+    "south_direction_label": "Rockaway Park",
+    "ada": "0",
+    "ada_notes": null,
+    "gtfs_latitude": "40.588034",
+    "gtfs_longitude": "-73.813641"
   }
 ]
