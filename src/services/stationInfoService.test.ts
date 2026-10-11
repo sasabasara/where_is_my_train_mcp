@@ -11,8 +11,18 @@ import {
   getStationInfo
 } from './stationInfoService.js';
 
+const rows = JSON.parse(fs.readFileSync(path.join(__dirname, '../__fixtures__/stations.json'), 'utf-8'));
+
 beforeAll(() => {
-  setStations(JSON.parse(fs.readFileSync(path.join(__dirname, '../__fixtures__/stations.json'), 'utf-8')));
+  setStations(rows);
+});
+
+describe('setStations', () => {
+  it('treats the dataset\'s "NaN" text as missing', () => {
+    setStations(rows.map((r: any) => r.gtfs_stop_id === 'B10' ? { ...r, ada_notes: 'NaN', north_direction_label: 'NaN' } : r));
+    expect(getStationInfo('B10')).toMatchObject({ accessibilityNotes: null, northLabel: 'Northbound', southLabel: 'Downtown' });
+    setStations(rows);
+  });
 });
 
 describe('routeMatchesLine', () => {

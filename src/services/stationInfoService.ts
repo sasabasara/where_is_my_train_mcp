@@ -16,6 +16,10 @@ let loading: Promise<void> | null = null;
 
 const ADA_LEVELS: Record<string, StationInfo['accessibility']> = { '0': 'none', '1': 'full', '2': 'partial' };
 
+// The dataset writes missing text as the string "NaN" (every station without ADA notes, as of 2026-10)
+const text = (value: unknown): string | null =>
+  typeof value === 'string' && value.trim() !== '' && value !== 'NaN' ? value : null;
+
 function toStationInfo(row: any): StationInfo {
   return {
     stopId: row.gtfs_stop_id,
@@ -23,10 +27,10 @@ function toStationInfo(row: any): StationInfo {
     name: row.stop_name,
     borough: row.borough,
     routes: (row.daytime_routes ?? '').split(' ').filter(Boolean),
-    northLabel: row.north_direction_label || 'Northbound',
-    southLabel: row.south_direction_label || 'Southbound',
+    northLabel: text(row.north_direction_label) ?? 'Northbound',
+    southLabel: text(row.south_direction_label) ?? 'Southbound',
     accessibility: ADA_LEVELS[row.ada] ?? 'none',
-    accessibilityNotes: row.ada_notes || null,
+    accessibilityNotes: text(row.ada_notes),
     lat: Number(row.gtfs_latitude),
     lon: Number(row.gtfs_longitude)
   };
