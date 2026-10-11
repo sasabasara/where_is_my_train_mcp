@@ -48,9 +48,9 @@ If a name fits several stations ("23rd St"), it asks which one.
 
 ## Data
 
-- **Arrivals:** MTA GTFS-realtime feeds (protobuf), refreshed about every 30 seconds, so times can lag the MTA by a minute or more. `confirmed: true` means a real train is on its way, not just a scheduled trip.
-- **Alerts:** MTA service alerts, with the MTA's own type and severity.
-- **Elevators:** MTA elevator and escalator outage feeds.
+- **Arrivals:** MTA GTFS-realtime feeds (protobuf), cached for 30 seconds, so predictions may lag the MTA. `confirmed: true` means the MTA has assigned a train to the trip. If a feed fails, predictions up to five minutes old may be returned with `staleFeeds` and a warning. Older feeds are rejected; canceled trips and skipped stops are excluded.
+- **Alerts:** MTA service alerts, with the MTA's own type and severity. Cached for 30 seconds.
+- **Elevators:** MTA elevator and escalator outage feeds, cached for 30 seconds. Equipment counts describe installed equipment, not a guarantee of an accessible route.
 - **Stations:** MTA static GTFS plus the [MTA Subway Stations](https://data.ny.gov/resource/39hk-dx4f) list for complexes, directions, and accessibility.
 
 ## Run locally
@@ -65,6 +65,11 @@ npm run build
 npm start        # http://localhost:3000/mcp
 npm test         # unit tests
 ```
+
+Tests include local HTTP/MCP integration checks and require permission to listen on localhost.
+For an optional read-only audit against MTA data and the hosted server, run `node scripts/audit-live.mjs` after building. It checks every station, compares arrivals with independently decoded feeds, and writes its results to `.dev_docs/audit-results.json`.
+
+The hosted server uses in-memory MCP sessions and currently requires a single instance. Request logs omit GPS coordinates from `nearest_station` calls.
 
 ## License
 

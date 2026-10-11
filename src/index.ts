@@ -16,6 +16,7 @@ import { ensureStationInfoLoaded, getComplexStations } from "./services/stationI
 
 import { ToolResponse } from "./types/index.js";
 import { SERVER_VERSION } from "./version.js";
+import { redactToolArgs } from "./utils/logging.js";
 
 // Major transfer complexes, each by one of its GTFS stop IDs (Times Sq, Grand Central, Herald Sq,
 // Union Sq, Columbus Circle, Lexington Av/59 St, Atlantic Av-Barclays Ctr, Fulton St,
@@ -96,6 +97,7 @@ const nextTrainsOutputSchema = standardResponseShape(
     ambiguous: z.boolean().optional(),
     options: z.array(stationSummarySchema).optional(),
     unavailableFeeds: z.array(z.string()).optional(),
+    staleFeeds: z.array(z.string()).optional(),
     query: z.string().optional()
   }).passthrough().nullable()
 );
@@ -114,7 +116,8 @@ const serviceStatusOutputSchema = standardResponseShape(
       alertType: z.string().nullable(),
       affectedLines: z.array(z.string())
     }).passthrough()).optional(),
-    unavailableFeeds: z.array(z.string()).optional()
+    unavailableFeeds: z.array(z.string()).optional(),
+    staleFeeds: z.array(z.string()).optional()
   }).passthrough().nullable()
 );
 
@@ -200,7 +203,7 @@ const elevatorEscalatorOutputSchema = standardResponseShape(
 
 // Tool logging helper
 function logToolCall(toolName: string, args: Record<string, unknown>): void {
-  const argsStr = Object.entries(args)
+  const argsStr = Object.entries(redactToolArgs(toolName, args) ?? {})
     .filter(([_, v]) => v !== undefined)
     .map(([k, v]) => `${k}: ${JSON.stringify(v)}`)
     .join(", ");
@@ -482,7 +485,9 @@ export function createMcpServer() {
       title: "Station Transfers",
       description: "Lines a rider can reach at a station without leaving the system: all daytime lines at the station complex, and each connected platform with its lines",
       inputSchema: {
-        station: z.string().describe("Station name to find transfers for")
+        station: z.string().optional().describe("Station name to find transfers for"),
+        stop_id: z.string().optional().describe("GTFS stop ID from an ambiguity response or find_station; takes precedence over station"),
+        line: z.string().optional().describe("Choose the matching station served by this line")
       },
       outputSchema: stationTransfersOutputSchema,
       annotations: {
@@ -514,8 +519,8 @@ export function createMcpServer() {
       title: "Nearest Station",
       description: "Find the subway stations closest to GPS coordinates, sorted by straight-line distance in meters, with daytime lines and wheelchair accessibility. Requires lat/lon. For landmarks, neighborhoods or addresses, use your own knowledge of their coordinates; if the place is obscure or ambiguous, ask the rider for a nearby cross street first",
       inputSchema: {
-        lat: z.number().optional().describe("Latitude coordinate (required)"),
-        lon: z.number().optional().describe("Longitude coordinate (required)"),
+        lat: z.number().min(-90).max(90).optional().describe("Latitude coordinate (required)"),
+        lon: z.number().min(-180).max(180).optional().describe("Longitude coordinate (required)"),
         limit: z.number().optional().describe("Maximum number of stations to return (1-20, default 5)"),
         radius: z.number().optional().describe("Search radius in meters"),
         accessible_only: z.boolean().optional().describe("Only stations with full or partial wheelchair access (check accessibilityNotes for partial)"),

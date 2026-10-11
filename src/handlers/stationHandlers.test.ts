@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import { parseCSV } from '../utils/csvParser.js';
@@ -72,9 +72,63 @@ vi.mock('../services/stationInfoService.js', async (importOriginal) => {
 });
 
 const { setStations } = await import('../services/stationInfoService.js');
+const { fetchMTAData } = await import('../services/mtaService.js');
 const { handleNextTrains, handleFindStation, handleNearestStation, handleStationTransfers } = await import('./toolHandlers.js');
 
 const payload = (result: { content: { text: string }[] }) => JSON.parse(result.content[0].text);
+
+afterEach(() => { setStations(stationRows); });
+
+describe('audit regressions', () => {
+  it('resolves the transfer follow-up using the stop_id offered in the ambiguity response', async () => {
+    const choice = payload(await handleStationTransfers({ station: '23 st' })).data.options[0];
+    const result = payload(await handleStationTransfers({ stop_id: choice.stopIds[0] } as any));
+    expect(result.status).toBe('success');
+    expect(result.data.ambiguous).toBeUndefined();
+    expect(result.data.connections.map((c: any) => c.stopId)).toContain(choice.stopIds[0]);
+  });
+
+  it('requires accessibility on the requested line, not another line in the complex', async () => {
+    const result = payload(await handleNearestStation({ lat: 40.7359, lon: -73.9906, radius: 600, accessible_only: true, service_filter: ['6'] }));
+    expect(result.data.map((s: any) => s.name)).not.toContain('14 St-Union Sq');
+    expect(result.data.map((s: any) => s.name)).toContain('23 St-Baruch College');
+  });
+
+  it('keeps same-name stations separate when the station metadata feed is unavailable', async () => {
+    setStations([]);
+    const result = payload(await handleNextTrains({ station: '23 st' }));
+    expect(result.data.ambiguous).toBe(true);
+    expect(result.data.options.filter((s: any) => s.name === '23 St')).toHaveLength(4);
+  });
+
+  it('does not return southbound trains for an explicit N request with no northbound service', async () => {
+    const result = payload(await handleNextTrains({ stop_id: '130', direction: 'N' }));
+    expect(result.data.arrivals).toEqual([]);
+    expect(result.data.note).toMatch(/No upcoming trains match/);
+  });
+
+  it('excludes canceled trips and skipped stops even when the feed supplies arrival times', async () => {
+    const canceled = trip('6', 'canceled', '635N', 1) as any;
+    canceled.tripUpdate.trip.scheduleRelationship = 'CANCELED';
+    const skipped = trip('6', 'skipped', '635N', 2) as any;
+    skipped.tripUpdate.stopTimeUpdate[0].scheduleRelationship = 'SKIPPED';
+    vi.mocked(fetchMTAData).mockResolvedValueOnce({ entity: [canceled, skipped, trip('6', 'running', '635N', 3)] } as any);
+    const result = payload(await handleNextTrains({ stop_id: '635N' }));
+    expect(result.data.arrivals.map((a: any) => a.tripId)).toEqual(['running']);
+  });
+
+  it('identifies arrivals served from a stale feed', async () => {
+    vi.mocked(fetchMTAData).mockResolvedValueOnce({ entity: [trip('6', 'cached', '635N', 3)], feedStatus: { failedFeeds: [], staleFeeds: ['1234567s'] } } as any);
+    const result = payload(await handleNextTrains({ stop_id: '635N' }));
+    expect(result.data.staleFeeds).toEqual(['1234567s']);
+    expect(result.data.note).toMatch(/cached/i);
+  });
+
+  it('rejects impossible coordinates instead of computing a plausible nearby station', async () => {
+    const result = await handleNearestStation({ lat: 400, lon: -74 });
+    expect(result.isError).toBe(true);
+  });
+});
 
 beforeAll(() => {
   setStations(stationRows);

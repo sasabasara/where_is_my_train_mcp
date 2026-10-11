@@ -93,6 +93,10 @@ describe('StationMatcher.normalizeStationName — rider phrasing', () => {
 });
 
 describe('StationMatcher.findBestMatches', () => {
+  it('treats object-property names as station queries, not aliases', () => {
+    expect(StationMatcher.findBestMatches('constructor', mockStops)).toEqual([]);
+    expect(StationMatcher.findBestMatches('__proto__', mockStops)).toEqual([]);
+  });
   it('matches "34th street" to the 34 St stations', () => {
     const names = StationMatcher.findBestMatches('34th street', mockStops).map(m => m.stop_name);
     expect(names).toEqual(expect.arrayContaining(['34 St-Herald Sq', '34 St-Penn Station']));

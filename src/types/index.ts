@@ -92,7 +92,9 @@ export interface SubwayAlertsArgs {
 }
 
 export interface StationTransfersArgs {
-  station: string;
+  station?: string;
+  stop_id?: string;
+  line?: string;
 }
 
 export interface NearestStationArgs {

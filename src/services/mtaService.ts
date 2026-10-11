@@ -17,7 +17,7 @@ const gtfsRootPromise: Promise<protobuf.Root> = protobuf.load([
 ]);
 
 let cachedData: any = null;
-let lastFetchTime = 0;
+let cacheExpiresAt = 0;
 let inFlight: Promise<any> | null = null;
 const CACHE_DURATION_MS = 30000; // 30 seconds
 
@@ -40,8 +40,6 @@ async function fetchSingleFeed(url: string) {
       }
     });
 
-    clearTimeout(timeoutId);
-
     if (!res.ok) {
       throw new Error(`HTTP ${res.status}: ${res.statusText}`);
     }
@@ -56,20 +54,27 @@ async function fetchSingleFeed(url: string) {
     const decoded = FeedMessage.toObject(message, {
       longs: String,
       enums: String,
-      bytes: String
+      bytes: String,
+      arrays: true
     });
 
     if (!decoded || !Array.isArray(decoded.entity)) {
       throw new Error('Invalid feed structure');
     }
+    const feedTime = Number(decoded.header?.timestamp) * 1000;
+    if (Number.isFinite(feedTime) && Date.now() - feedTime >= MAX_FEED_STALENESS_MS) {
+      throw new Error('Feed timestamp is more than five minutes old');
+    }
 
     return decoded;
   } catch (error: any) {
-    clearTimeout(timeoutId);
     if (error.name === 'AbortError') {
       throw new Error('Feed request timed out after 10 seconds');
     }
     throw error;
+  } finally {
+    // Keep the deadline active while reading the body, not just until headers arrive.
+    clearTimeout(timeoutId);
   }
 }
 
@@ -79,7 +84,7 @@ async function fetchSingleFeed(url: string) {
  * usable data are listed in feedStatus.failedFeeds. Throws only if no feed has data.
  */
 export async function fetchMTAData(forceRefresh = false) {
-  if (!forceRefresh && cachedData && (Date.now() - lastFetchTime < CACHE_DURATION_MS)) {
+  if (!forceRefresh && cachedData && Date.now() < cacheExpiresAt) {
     return cachedData;
   }
 
@@ -93,6 +98,7 @@ async function fetchAllFeeds() {
     Object.values(MTA_FEEDS).map(url => fetchSingleFeed(url))
   );
   const now = Date.now();
+  let expiresAt = now + CACHE_DURATION_MS;
 
   const combinedData = {
     entity: [] as any[],
@@ -111,7 +117,8 @@ async function fetchAllFeeds() {
 
     if (result.status === 'fulfilled') {
       feed = { entity: result.value.entity, header: result.value.header };
-      lastGoodFeeds[feedName] = { ...feed, fetchedAt: now };
+      const feedTime = Number(feed.header?.timestamp) * 1000;
+      lastGoodFeeds[feedName] = { ...feed, fetchedAt: Number.isFinite(feedTime) ? Math.min(now, feedTime) : now };
       combinedData.feedStatus.successful++;
     } else {
       combinedData.feedStatus.failed++;
@@ -127,6 +134,7 @@ async function fetchAllFeeds() {
     }
 
     if (feed) {
+      expiresAt = Math.min(expiresAt, lastGoodFeeds[feedName].fetchedAt + MAX_FEED_STALENESS_MS);
       combinedData.entity.push(...feed.entity);
       combinedData.header ??= feed.header;
     }
@@ -137,7 +145,7 @@ async function fetchAllFeeds() {
   }
 
   cachedData = combinedData;
-  lastFetchTime = now;
+  cacheExpiresAt = expiresAt;
   return combinedData;
 }
 
@@ -170,7 +178,24 @@ async function fetchJSON(url: string, label: string): Promise<any> {
 
 // JSON flavour of the alerts feed: same GTFS-RT shape, but with the MTA "Mercury"
 // extension (alert_type, priority, created/updated) already decoded.
-export async function fetchMTAAlerts() {
+// Share concurrent calls and cache successful results for 30 seconds. Expired outage/alert
+// data is never silently served as current when a refresh fails.
+function cachedJSON<T>(load: () => Promise<T>): () => Promise<T> {
+  let value: T;
+  let fetchedAt = 0;
+  let pending: Promise<T> | null = null;
+  return () => {
+    if (fetchedAt > 0 && Date.now() - fetchedAt < CACHE_DURATION_MS) return Promise.resolve(value);
+    pending ??= load().then(result => {
+      value = result;
+      fetchedAt = Date.now();
+      return result;
+    }).finally(() => { pending = null; });
+    return pending;
+  };
+}
+
+export const fetchMTAAlerts = cachedJSON(async () => {
   const data = await fetchJSON(
     "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fsubway-alerts.json",
     "Alerts"
@@ -181,9 +206,9 @@ export async function fetchMTAAlerts() {
   }
 
   return data;
-}
+});
 
-export async function fetchEquipmentOutages() {
+export const fetchEquipmentOutages = cachedJSON(async () => {
   const data = await fetchJSON(
     "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fnyct_ene.json",
     "Equipment outage"
@@ -194,7 +219,7 @@ export async function fetchEquipmentOutages() {
   }
 
   return data;
-}
+});
 
 // Full elevator/escalator inventory (~700 rows, rarely changes) — cached for a day
 let equipmentListCache: any[] | null = null;

@@ -1,0 +1,357 @@
+import express from "express";
+import rateLimit from "express-rate-limit";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
+import { createMcpServer } from "./index.js";
+import { randomUUID } from "crypto";
+import { SERVER_VERSION } from "./version.js";
+import { redactToolArgs, captureResponseOutcome } from "./utils/logging.js";
+
+// Express 4 does not forward rejected async handlers to its error middleware.
+const asyncRoute = (handler: express.RequestHandler): express.RequestHandler =>
+    (req, res, next) => { Promise.resolve().then(() => handler(req, res, next)).catch(next); };
+
+
+export function createApp() {
+    const app = express();
+
+    // Railway terminates TLS at its proxy, so trust the first hop to read X-Forwarded-For
+    app.set("trust proxy", 1);
+
+    // CORS middleware for cross-origin clients. Allowed headers echo the preflight request, so
+    // headers added by newer MCP versions work without listing each one (no cookies/credentials here)
+    app.use((req, res, next) => {
+        res.header("Access-Control-Allow-Origin", "*");
+        res.header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+        res.header("Access-Control-Allow-Headers", req.header("Access-Control-Request-Headers") ?? "Content-Type, mcp-session-id, mcp-protocol-version");
+        res.header("Access-Control-Expose-Headers", "mcp-session-id");
+
+        if (req.method === "OPTIONS") {
+            res.sendStatus(200);
+            return;
+        }
+        next();
+    });
+
+    // Detect client type from user agent
+    function detectClientType(userAgent: string | undefined): string {
+        if (!userAgent) return "unknown";
+        if (userAgent.includes("curl")) return "curl";
+        if (userAgent.includes("Claude") || userAgent.includes("claude")) return "claude-desktop";
+        if (userAgent.includes("node") || userAgent.includes("undici")) return "mcp-client";
+        if (userAgent.includes("Mozilla")) return "browser";
+        return "unknown";
+    }
+
+    // Wide event logging middleware - one structured JSON per request.
+    // Logged on 'finish' because the MCP transport writes responses directly
+    // (not via res.json); res.json is still wrapped to capture our own error bodies.
+    app.use((req, res, next) => {
+        const startTime = Date.now();
+        const requestId = randomUUID().slice(0, 8);
+        const responseOutcome = captureResponseOutcome(res);
+
+        res.on("finish", () => {
+            const outcome = responseOutcome();
+            const sessionId = (req.headers["mcp-session-id"] ?? res.getHeader("mcp-session-id")) as string | undefined;
+
+            const event = {
+                // Request identity
+                requestId,
+                timestamp: new Date().toISOString(),
+
+                // What happened
+                method: req.method,
+                path: req.path,
+                mcpMethod: req.body?.method || null,
+                mcpId: req.body?.id ?? null,
+                toolName: req.body?.params?.name || null,
+                toolArgs: redactToolArgs(req.body?.params?.name, req.body?.params?.arguments),
+
+                // Who
+                sessionId: sessionId?.slice(0, 8) || null,
+                clientType: detectClientType(req.headers["user-agent"] as string),
+
+                // Outcome
+                statusCode: res.statusCode,
+                success: res.statusCode < 400 && !outcome.isError,
+                errorCode: outcome.errorCode,
+                errorMessage: outcome.errorMessage,
+
+                // Performance
+                durationMs: Date.now() - startTime,
+
+                // Server context
+                activeSessions: Object.keys(httpTransports).length
+            };
+
+            console.log(JSON.stringify(event));
+        });
+
+        next();
+    });
+
+    // Parse JSON bodies for all routes (after logging, so unparseable requests are logged too)
+    app.use(express.json());
+
+    // Per-IP rate limit on the MCP endpoint to absorb casual abuse
+    const mcpLimiter = rateLimit({
+        windowMs: 60 * 1000,
+        limit: 100,
+        standardHeaders: "draft-7",
+        legacyHeaders: false,
+        message: {
+            jsonrpc: "2.0",
+            error: { code: -32000, message: "Rate limit exceeded. Try again in a minute." },
+            id: null
+        }
+    });
+    app.use("/mcp", mcpLimiter);
+
+    // Store Streamable HTTP transports by session ID
+    const httpTransports: Record<string, StreamableHTTPServerTransport> = Object.create(null);
+
+    const sessionLastSeen: Record<string, number> = Object.create(null);
+
+    const SESSION_IDLE_MS = 30 * 60 * 1000;
+    const SESSION_SWEEP_MS = 5 * 60 * 1000;
+    const SESSION_MAX = 1000;
+
+    // Health check / root endpoint
+    app.get("/", (req, res) => {
+        res.json({
+            status: "ok",
+            name: "where-is-my-train-mta",
+            version: SERVER_VERSION,
+            endpoints: {
+                mcp: "/mcp",
+                serverCard: "/.well-known/mcp/server-card.json"
+            }
+        });
+    });
+
+    async function sweepIdleSessions(): Promise<void> {
+        const now = Date.now();
+        const ids = Object.keys(httpTransports);
+
+        for (const id of ids) {
+            const lastSeen = sessionLastSeen[id];
+            if (lastSeen === undefined || now - lastSeen > SESSION_IDLE_MS) {
+                try {
+                    await httpTransports[id].close();
+                } catch {
+                    delete httpTransports[id];
+                }
+                delete sessionLastSeen[id];
+            }
+        }
+
+        const remaining = Object.keys(httpTransports);
+        if (remaining.length > SESSION_MAX) {
+            const byOldest = remaining.sort(
+                (a, b) => (sessionLastSeen[a] ?? 0) - (sessionLastSeen[b] ?? 0)
+            );
+            const toEvict = byOldest.slice(0, remaining.length - SESSION_MAX);
+            for (const id of toEvict) {
+                try {
+                    await httpTransports[id].close();
+                } catch {
+                    delete httpTransports[id];
+                }
+                delete sessionLastSeen[id];
+            }
+        }
+    }
+
+    const sessionSweeper = setInterval(sweepIdleSessions, SESSION_SWEEP_MS);
+    sessionSweeper.unref();
+
+    // A session ID we don't know (idle-swept, or lost in a redeploy). Per the MCP spec, 404 tells
+    // the client to start a new session; a 400 doesn't.
+    function sessionNotFound(res: express.Response): void {
+        res.status(404).json({
+            jsonrpc: "2.0",
+            error: { code: -32001, message: "Session not found" },
+            id: null
+        });
+    }
+
+    // Streamable HTTP transport (POST /mcp)
+    app.post("/mcp", asyncRoute(async (req, res) => {
+        const sessionId = req.headers["mcp-session-id"] as string | undefined;
+        let transport: StreamableHTTPServerTransport;
+
+        if (sessionId && httpTransports[sessionId]) {
+            transport = httpTransports[sessionId];
+            sessionLastSeen[sessionId] = Date.now();
+        } else if (!sessionId && isInitializeRequest(req.body)) {
+            if (Object.keys(httpTransports).length >= SESSION_MAX) {
+                res.status(503).json({ jsonrpc: "2.0", error: { code: -32000, message: "Server at session capacity. Try again later." }, id: (req.body as { id?: unknown }).id ?? null });
+                return;
+            }
+            // Extract client info from initialize request
+            const clientInfo = req.body.params?.clientInfo;
+            const clientName = clientInfo?.name || "unknown";
+            const clientVersion = clientInfo?.version || "";
+
+            transport = new StreamableHTTPServerTransport({
+                sessionIdGenerator: () => randomUUID(),
+                enableJsonResponse: true,
+                onsessioninitialized: (id) => {
+                    httpTransports[id] = transport;
+                    sessionLastSeen[id] = Date.now();
+                    console.log(JSON.stringify({
+                        event: "session_start",
+                        timestamp: new Date().toISOString(),
+                        sessionId: id.slice(0, 8),
+                        clientName,
+                        clientVersion,
+                        activeSessions: Object.keys(httpTransports).length
+                    }));
+                }
+            });
+
+            transport.onclose = () => {
+                if (transport.sessionId) {
+                    console.log(JSON.stringify({
+                        event: "session_end",
+                        timestamp: new Date().toISOString(),
+                        sessionId: transport.sessionId.slice(0, 8),
+                        activeSessions: Object.keys(httpTransports).length - 1
+                    }));
+                    delete httpTransports[transport.sessionId];
+                    delete sessionLastSeen[transport.sessionId];
+                }
+            };
+
+            const mcpServer = createMcpServer();
+            await mcpServer.connect(transport);
+        } else if (sessionId) {
+            sessionNotFound(res);
+            return;
+        } else {
+            res.status(400).json({
+                jsonrpc: "2.0",
+                error: { code: -32000, message: "Bad Request: No valid session or initialize request" },
+                id: null
+            });
+            return;
+        }
+
+        await transport.handleRequest(req, res, req.body);
+    }));
+
+    // Streamable HTTP transport (GET /mcp for SSE notifications)
+    app.get("/mcp", asyncRoute(async (req, res) => {
+        const sessionId = req.headers["mcp-session-id"] as string;
+        const transport = httpTransports[sessionId];
+
+        if (transport) {
+            sessionLastSeen[sessionId] = Date.now();
+            await transport.handleRequest(req, res);
+        } else if (sessionId) {
+            sessionNotFound(res);
+        } else {
+            // Return 405 Method Not Allowed per MCP spec when no valid session
+            // This tells clients SSE is supported but requires a session first
+            res.status(405).set("Allow", "POST, DELETE").json({
+                jsonrpc: "2.0",
+                error: { code: -32600, message: "SSE stream requires valid session. Initialize first with POST." },
+                id: null
+            });
+        }
+    }));
+
+    // Streamable HTTP transport (DELETE /mcp for session termination)
+    app.delete("/mcp", asyncRoute(async (req, res) => {
+        const sessionId = req.headers["mcp-session-id"] as string;
+        const transport = httpTransports[sessionId];
+
+        if (transport) {
+            await transport.handleRequest(req, res);
+        } else if (sessionId) {
+            sessionNotFound(res);
+        } else {
+            res.status(400).json({
+                jsonrpc: "2.0",
+                error: { code: -32000, message: "Invalid session" },
+                id: null
+            });
+        }
+    }));
+
+    // MCP Server Card endpoint for discovery
+    app.get("/.well-known/mcp/server-card.json", (req, res) => {
+        const baseUrl = process.env.RAILWAY_PUBLIC_DOMAIN
+            ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+            : `http://localhost:${process.env.PORT || 3000}`;
+
+        res.json({
+            name: "where-is-my-train-mta",
+            description: "NYC Subway MCP server providing real-time train arrivals, service alerts, and station information.",
+            version: SERVER_VERSION,
+            url: baseUrl,
+            homepage: "https://github.com/sasabasara/where_is_my_train_mcp",
+            license: "MIT",
+            transport: {
+                type: "streamable-http",
+                endpoint: `${baseUrl}/mcp`
+            },
+            authentication: {
+                required: false
+            },
+            configSchema: {
+                type: "object",
+                properties: {},
+                required: []
+            },
+            capabilities: {
+                tools: [
+                    { name: "find_station", description: "Search for subway stations by name, with stop IDs, daytime lines, and accessibility" },
+                    { name: "next_trains", description: "Real-time train arrivals at a station from live MTA feeds: line, direction, destination, and predicted arrival time" },
+                    { name: "service_status", description: "Quick service snapshot for the whole system or one line: trains running, alerts in effect, and the most severe alerts" },
+                    { name: "subway_alerts", description: "Official MTA subway service alerts, most severe first, with alert type, severity, affected lines, and active period" },
+                    { name: "station_transfers", description: "Lines a rider can reach at a station without leaving the system" },
+                    { name: "nearest_station", description: "Find the subway stations closest to GPS coordinates, with daytime lines and accessibility" },
+                    { name: "service_disruptions", description: "Is subway service disrupted right now? Overall status, counts by severity, and each disruption with affected lines and stations" },
+                    { name: "elevator_and_escalator_status", description: "Elevator and escalator outages at subway stations, with estimated return and the MTA's suggested alternative route" }
+                ],
+                prompts: [
+                    { name: "check_train_arrivals", description: "Check upcoming train arrivals at a station" },
+                    { name: "check_service_alerts", description: "Check current subway service alerts" },
+                    { name: "check_elevator_status", description: "Check elevator and escalator status at a station" }
+                ],
+                resources: [
+                    { uri: "subway://lines", name: "subway_lines", description: "NYC Subway Lines Reference" },
+                    { uri: "subway://major-stations", name: "major_stations", description: "Major NYC Subway Transfer Stations" }
+                ]
+            }
+        });
+    });
+
+    // Errors from express.json (invalid JSON, body too large) or a route: answer in JSON-RPC
+    // instead of Express's HTML error page, which includes a stack trace
+    app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+        if (res.headersSent) return next(err);
+        const parseError = err?.type === "entity.parse.failed";
+        const status = err?.status >= 400 && err?.status < 500 ? err.status : 500;
+        res.status(status).json({
+            jsonrpc: "2.0",
+            error: parseError
+                ? { code: -32700, message: "Parse error: request body is not a valid JSON-RPC message" }
+                : status < 500 && err?.expose
+                    ? { code: -32600, message: `Invalid request: ${err.message}` }
+                    : { code: -32603, message: "Internal error" },
+            id: null
+        });
+    });
+
+
+    return {
+        app,
+        async close() {
+            clearInterval(sessionSweeper);
+            await Promise.allSettled(Object.values(httpTransports).map(t => t.close()));
+        }
+    };
+}

@@ -55,7 +55,7 @@ export function parseAlert(entity: any, now = Date.now()): SubwayAlert | null {
     start: p.start ? Number(p.start) * 1000 : 0,
     end: p.end ? Number(p.end) * 1000 : null
   }));
-  const current = periods.find((p: any) => p.start <= now && (p.end === null || p.end >= now));
+  const current = periods.find((p: any) => p.start <= now && (p.end === null || p.end > now));
   const next = periods
     .filter((p: any) => p.start > now)
     .sort((a: any, b: any) => a.start - b.start)[0];
@@ -70,7 +70,7 @@ export function parseAlert(entity: any, now = Date.now()): SubwayAlert | null {
     category: CATEGORY_BY_PRIORITY[priority] ?? 'OTHER',
     affectedLines: [...new Set(informed.map(ie => ie.route_id).filter(Boolean))] as string[],
     affectedStopIds: [...new Set(informed.map(ie => ie.stop_id).filter(Boolean))] as string[],
-    isActive: Boolean(current),
+    isActive: periods.length === 0 || Boolean(current),
     activePeriod: current ?? next ?? null,
     updatedAt: mercury.updated_at ? Number(mercury.updated_at) * 1000 : null
   };

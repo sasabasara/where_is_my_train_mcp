@@ -228,17 +228,19 @@ export async function handleNextTrains(args: NextTrainsArgs): Promise<ToolRespon
     const PAST_GRACE_MS = 30 * 1000;
 
     for (const entity of data.entity || []) {
-      if (!entity.tripUpdate) continue;
+      if (entity.isDeleted || !entity.tripUpdate) continue;
       const trip = entity.tripUpdate.trip;
+      if (!trip || ['CANCELED', 'DELETED'].includes(trip.scheduleRelationship)) continue;
       if (args.line && !routeMatchesLine(trip.routeId, args.line)) continue;
 
       const updates: any[] = entity.tripUpdate.stopTimeUpdate || [];
       // Where riders get off: the last update that is a station (see isKnownStop)
-      const terminal = [...updates].reverse().find(u => isKnownStop(u.stopId)) ?? updates[updates.length - 1];
+      const servedStops = updates.filter(u => u.scheduleRelationship !== 'SKIPPED');
+      const terminal = [...servedStops].reverse().find(u => isKnownStop(u.stopId)) ?? servedStops[servedStops.length - 1];
       const terminalInfo = terminal?.stopId ? getStationInfo(terminal.stopId) : undefined;
 
       for (const update of updates) {
-        if (!update.stopId) continue;
+        if (!update.stopId || ['SKIPPED', 'NO_DATA'].includes(update.scheduleRelationship)) continue;
         if (platform && update.stopId !== platform) continue;
         const base = update.stopId.replace(/[NS]$/, '');
         if (!parentIdSet.has(base)) continue;
@@ -247,7 +249,7 @@ export async function handleNextTrains(args: NextTrainsArgs): Promise<ToolRespon
 
         const t = update.arrival?.time ?? update.departure?.time;
         const arrivalTimestamp = t ? Number(t) * 1000 : null;
-        if (arrivalTimestamp === null) continue;
+        if (arrivalTimestamp === null || !Number.isFinite(arrivalTimestamp)) continue;
         if (arrivalTimestamp < now - PAST_GRACE_MS) continue;
 
         arrivals.push({
@@ -286,8 +288,9 @@ export async function handleNextTrains(args: NextTrainsArgs): Promise<ToolRespon
         directionMatches(a.stopId, direction) ||
         (byName && (startsWord(a.destination) || startsWord(a.destinationBorough)))
       );
-      if (matching.length > 0) {
+      if (matching.length > 0 || !byName) {
         shown = matching;
+        if (matching.length === 0) notes.push(`No upcoming trains match "${direction}" at this station right now.`);
       } else if (arrivals.length > 0) {
         notes.push(`No upcoming trains match "${direction}" (directions here: ${availableDirections.join(', ')}); showing all directions.`);
       }
@@ -312,12 +315,14 @@ export async function handleNextTrains(args: NextTrainsArgs): Promise<ToolRespon
       arrivals: shown.slice(0, limit),
       count: Math.min(shown.length, limit)
     };
-    if (notes.length > 0) {
-      result.note = notes.join(' ');
-    }
     if (data.feedStatus?.failedFeeds?.length) {
       result.unavailableFeeds = data.feedStatus.failedFeeds;
     }
+    if (data.feedStatus?.staleFeeds?.length) {
+      result.staleFeeds = data.feedStatus.staleFeeds;
+      notes.push(`Some MTA feeds are unavailable; cached predictions up to five minutes old are included (${data.feedStatus.staleFeeds.join(', ')}).`);
+    }
+    if (notes.length > 0) result.note = notes.join(' ');
 
     return createStandardResponse(result, `Found ${result.count} upcoming trains for ${stationName}`);
   } catch (error) {
@@ -333,14 +338,17 @@ export async function handleServiceStatus(args: ServiceStatusArgs): Promise<Tool
       getSubwayAlerts({ line, activeOnly: true })
     ]);
 
-    const trips = (data.entity || []).filter((e: any) => e.tripUpdate && (!line || routeMatchesLine(e.tripUpdate.trip?.routeId, line)));
+    const trips = (data.entity || []).filter((e: any) => !e.isDeleted && e.tripUpdate?.trip &&
+      !['CANCELED', 'DELETED'].includes(e.tripUpdate.trip.scheduleRelationship) &&
+      (!line || routeMatchesLine(e.tripUpdate.trip.routeId, line)));
 
     const result = {
       line: line || null,
       activeTrips: trips.length,
       activeAlerts: alerts.length,
       topAlerts: alerts.slice(0, 3).map(a => ({ header: a.header, severity: a.severity, alertType: a.alertType, affectedLines: a.affectedLines })),
-      unavailableFeeds: data.feedStatus?.failedFeeds ?? []
+      unavailableFeeds: data.feedStatus?.failedFeeds ?? [],
+      staleFeeds: data.feedStatus?.staleFeeds ?? []
     };
 
     return createStandardResponse(result, `Service status for ${line ? `the ${line} line` : 'the system'}`);
@@ -384,12 +392,13 @@ export async function handleSubwayAlerts(args: SubwayAlertsArgs): Promise<ToolRe
 export async function handleStationTransfers(args: StationTransfersArgs): Promise<ToolResponse> {
   await Promise.all([ensureDataLoaded(), ensureStationInfoLoaded()]);
   const stationQuery = args?.station?.trim() || "";
-  if (!stationQuery) {
-    return createStandardResponse(null, "Please provide a station name.", true);
+  const stopId = args?.stop_id?.trim().toUpperCase().replace(/[NS]$/, '') || '';
+  if (!stationQuery && !stopId) {
+    return createStandardResponse(null, "Please provide a station name or stop_id.", true);
   }
 
   try {
-    const resolved = resolveStation(stationQuery, '');
+    const resolved = resolveStation(stationQuery, stopId, args.line);
     if (resolved.kind === 'not_found') {
       return createStandardResponse({ query: stationQuery }, resolved.message, true);
     }
@@ -427,6 +436,9 @@ export async function handleNearestStation(args: NearestStationArgs): Promise<To
   if (args?.lat === undefined || args?.lon === undefined) {
     return createStandardResponse(null, "GPS coordinates (lat/lon) are required.", true);
   }
+  if (!Number.isFinite(args.lat) || !Number.isFinite(args.lon) || Math.abs(args.lat) > 90 || Math.abs(args.lon) > 180) {
+    return createStandardResponse(null, "Please provide valid GPS coordinates: latitude -90 to 90, longitude -180 to 180.", true);
+  }
 
   try {
     const stopsData = getStopsData();
@@ -456,7 +468,8 @@ export async function handleNearestStation(args: NearestStationArgs): Promise<To
     }
     if (args.service_filter?.length) {
       candidates = candidates.filter(s =>
-        args.service_filter!.some(line => getComplexStations(s.stopId).some(st => stationServesLine(st, line)))
+        args.service_filter!.some(line => getComplexStations(s.stopId).some(st =>
+          stationServesLine(st, line) && (!args.accessible_only || st.accessibility !== 'none')))
       );
     }
 

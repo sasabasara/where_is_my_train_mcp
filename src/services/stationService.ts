@@ -74,7 +74,8 @@ export class StationMatcher {
   }
 
   static findBestMatches(query: string, stops: any[]): StationMatch[] {
-    query = QUERY_ALIASES[query.toLowerCase().trim()] ?? query;
+    const alias = query.toLowerCase().trim();
+    query = Object.prototype.hasOwnProperty.call(QUERY_ALIASES, alias) ? QUERY_ALIASES[alias] : query;
     const normalizedQuery = this.normalizeStationName(query);
     const originalQuery = query.toLowerCase().trim();
 
@@ -146,7 +147,7 @@ export class StationMatcher {
    * best-scoring member is used for the group.
    */
   static groupByComplex(matches: StationMatch[], complexOf: (stopId: string) => string | undefined): StationGroup[] {
-    return this.groupBy(matches, match => complexOf(match.stop_id) ?? `name:${match.stop_name}`);
+    return this.groupBy(matches, match => complexOf(match.stop_id) ?? `stop:${match.stop_id}`);
   }
 
   private static groupBy(matches: StationMatch[], keyOf: (match: StationMatch) => string): StationGroup[] {

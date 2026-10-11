@@ -1,7 +1,17 @@
 import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('./mtaService.js', () => ({ fetchMTAAlerts: vi.fn() }));
-const { mergeSplitAlerts } = await import('./alertService.js');
+const { mergeSplitAlerts, parseAlert } = await import('./alertService.js');
+
+describe('alert timing', () => {
+  it('shows an alert with no active_period for as long as it is present in the feed', () => {
+    expect(parseAlert({ id: 'always', alert: { header_text: { translation: [{ text: 'Service suspended' }] } } })?.isActive).toBe(true);
+  });
+
+  it('ends an alert exactly at the end of its time range', () => {
+    expect(parseAlert({ id: 'ended', alert: { active_period: [{ start: 1, end: 2 }] } }, 2000)?.isActive).toBe(false);
+  });
+});
 
 const alert = (id: string, priority: number, lines: string[], severity: any) => ({
   id, header: 'No [2] between Franklin Av and Flatbush Av', description: null, alertType: null,
