@@ -30,7 +30,15 @@ const MAJOR_HUBS = new Set([
 
 // Whole-query nicknames riders use that don't appear in GTFS names
 const QUERY_ALIASES: Record<string, string> = {
-  'wtc': 'world trade center'
+  'wtc': 'world trade center',
+  'grand central terminal': 'grand central-42 st',
+  'citi field': 'mets-willets point',
+  'atlantic terminal': 'atlantic av-barclays ctr'
+};
+
+const ORDINAL_WORDS: Record<string, string> = {
+  first: '1', second: '2', third: '3', fourth: '4', fifth: '5',
+  sixth: '6', seventh: '7', eighth: '8', ninth: '9', tenth: '10'
 };
 
 export class StationMatcher {
@@ -38,10 +46,14 @@ export class StationMatcher {
    * Applied to both the query and GTFS names, so "34th street", "W 4th St" and
    * "Jackson Heights" line up with "34 St", "W 4 St-Wash Sq" and "Jackson Hts".
    * Street ranges are spelled out, so "182nd st" and "50th st" find "182-183 Sts" and "47-50 Sts".
+   * Periods, apostrophes (straight or curly) and spelled-out ordinals don't matter: "St. George",
+   * "Princes Bay" and "Fifth Avenue" find "St George", "Prince's Bay" and "5 Av".
    */
   static normalizeStationName(name: string): string {
     return name.toLowerCase()
       .trim()
+      .replace(/[.'’]/g, '')
+      .replace(/\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\b/g, word => ORDINAL_WORDS[word])
       .replace(/\b(\d+)-(\d+) sts\b/g, '$1 street $2 street')
       .replace(/\b(\d+)(st|nd|rd|th)\b/g, '$1')
       .replace(/\bave?\b/g, 'avenue')

@@ -80,6 +80,13 @@ describe('StationMatcher.normalizeStationName — rider phrasing', () => {
     ['West 4th St', 'west 4 street'],
     ['47-50 Sts-Rockefeller Ctr', '47 street 50 street rockefeller center'],
     ['42 St-Bryant Pk', '42 street bryant park'],
+    ['St. George', 'street george'],
+    ['Union Sq.', 'union square'],
+    ['W. 4th St.', 'west 4 street'],
+    ['Prince’s Bay', 'princes bay'],
+    ["Prince's Bay", 'princes bay'],
+    ['Fifth Avenue', '5 avenue'],
+    ['Second Ave', '2 avenue'],
   ])('%s → %s', (input, expected) => {
     expect(StationMatcher.normalizeStationName(input)).toBe(expected);
   });
@@ -102,6 +109,11 @@ describe('StationMatcher.findBestMatches', () => {
     const stops = [...mockStops, { stop_id: 'D06', stop_name: '182-183 Sts', location_type: '1', parent_station: '', stop_lat: '0', stop_lon: '0' }];
     expect(StationMatcher.findBestMatches('182nd st', stops).map(m => m.stop_name)).toEqual(['182-183 Sts']);
     expect(StationMatcher.findBestMatches('183 street', stops).map(m => m.stop_name)).toEqual(['182-183 Sts']);
+  });
+
+  it('maps station nicknames to their GTFS names', () => {
+    const stops = [...mockStops, { stop_id: 'G08', stop_name: 'Grand Central-42 St', location_type: '1', parent_station: '', stop_lat: '0', stop_lon: '0' }];
+    expect(StationMatcher.findBestMatches('Grand Central Terminal', stops)[0].stop_name).toBe('Grand Central-42 St');
   });
 
   it('allows partial matching for 3-letter queries like "lex"', () => {
