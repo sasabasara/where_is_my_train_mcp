@@ -70,6 +70,30 @@ describe('service_disruptions', () => {
     expect(data.systemStatus).toBe('service_changes');
   });
 
+  it('matches a location the way riders type station names', async () => {
+    const jay = payload(await handleServiceDisruptions({ location: 'Jay Street-MetroTech' })).data;
+    expect(jay.disruptions.map((d: any) => d.lines)).toEqual([['A', 'C', 'F']]);
+
+    const flatbush = payload(await handleServiceDisruptions({ location: 'flatbush avenue' })).data;
+    expect(flatbush.disruptions.map((d: any) => d.lines)).toEqual([['2', '5']]);
+
+    // Word starts only: "rooklyn" is not "Brooklyn"
+    expect(payload(await handleServiceDisruptions({ location: 'rooklyn' })).data.counts.total).toBe(0);
+  });
+
+  it('shortens long descriptions in the system-wide overview only', async () => {
+    const overview = payload(await handleServiceDisruptions({}));
+    const twoFive = overview.data.disruptions.find((d: any) => d.lines.includes('2'));
+    expect(overview.data.descriptionsShortened).toBe(true);
+    expect(twoFive.description.length).toBeLessThanOrEqual(301);
+    expect(twoFive.description.endsWith('…')).toBe(true);
+    expect(overview.message).toMatch(/descriptions shortened/);
+
+    const line = payload(await handleServiceDisruptions({ line: '2' })).data;
+    expect(line.descriptionsShortened).toBe(false);
+    expect(line.disruptions[0].description.length).toBeGreaterThan(300);
+  });
+
   it('is normal when a line has no active alerts', async () => {
     const { data } = payload(await handleServiceDisruptions({ line: 'G' }));
     expect(data.systemStatus).toBe('normal');

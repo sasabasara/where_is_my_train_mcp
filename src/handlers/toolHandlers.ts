@@ -45,7 +45,8 @@ function createStandardResponse(data: any, message: string, isError = false): To
   return {
     content: [{
       type: "text",
-      text: JSON.stringify(response, null, 2)
+      // Compact: the client's model reads this, and indentation costs tokens
+      text: JSON.stringify(response)
     }],
     ...(isError && { isError: true })
   };
@@ -56,7 +57,8 @@ export async function handleServiceDisruptions(args: ServiceDisruptionsArgs): Pr
   try {
     const alerts = await getSubwayAlerts({ line: args.line, severity: args.severity, activeOnly: true });
     const analysis = ServiceDisruptionAnalyzer.analyze(args, alerts);
-    return createStandardResponse(analysis, `Service disruption analysis for ${args.line || 'system'}`);
+    const shortened = analysis.descriptionsShortened ? ' (descriptions shortened; pass line or location for the full text)' : '';
+    return createStandardResponse(analysis, `Service disruption analysis for ${args.line || args.location || 'system'}${shortened}`);
   } catch (error) {
     return createStandardResponse(null, "Service disruption analysis temporarily unavailable.", true);
   }
@@ -160,18 +162,22 @@ function resolveStation(query: string, stopId: string, line?: string): ResolvedS
   const matches = StationMatcher.findBestMatches(query, stopsData);
   if (matches.length === 0) return { kind: 'not_found', message: `No stations found matching "${query}"` };
 
-  // Best-scoring matches, plus any major hub the name matched: "14th st" should also offer
-  // 14 St-Union Sq, "atlantic ave" Atlantic Av-Barclays Ctr, "42nd st" Grand Central-42 St
-  const topScore = matches[0].score;
-  const shortlist = matches.filter(m => m.score === topScore || m.isHub);
-  let candidates = StationMatcher.groupByComplex(shortlist, complexOf);
+  // With a line, pick among the stations it serves, even if another station's name fits the
+  // query better: "57 st" + N is 57 St-7 Av (not 57 St), "5 av" + E is 5 Av/53 St (not 5 Av)
+  const onLine = line
+    ? matches.filter(m => getComplexStations(m.stop_id).some(s => stationServesLine(s, line)))
+    : [];
+  const pool = onLine.length > 0 ? onLine : matches;
 
-  if (line) {
-    const servesLine = candidates.filter(c =>
-      getComplexStations(c.stopIds[0]).some(s => stationServesLine(s, line))
-    );
-    if (servesLine.length > 0) candidates = servesLine;
-  }
+  // Best-scoring matches, plus any major hub the name matched ("14th st" should also offer
+  // 14 St-Union Sq, "42nd st" Grand Central-42 St), plus stations whose name starts with the
+  // query's words ("57 st" also offers 57 St-7 Av, "23rd st" 23 St-Baruch College)
+  const prefix = `${StationMatcher.normalizeStationName(query)} `;
+  const topScore = pool[0].score;
+  const shortlist = pool.filter(m =>
+    m.score === topScore || m.isHub || StationMatcher.normalizeStationName(m.stop_name).startsWith(prefix)
+  );
+  const candidates = StationMatcher.groupByComplex(shortlist, complexOf);
 
   if (candidates.length > 1) {
     return { kind: 'ambiguous', options: candidates.map(c => describeComplex(c.stopIds[0], c.name)) };

@@ -36,10 +36,12 @@ export class StationMatcher {
   /**
    * Applied to both the query and GTFS names, so "34th street", "W 4th St" and
    * "Jackson Heights" line up with "34 St", "W 4 St-Wash Sq" and "Jackson Hts".
+   * Street ranges are spelled out, so "182nd st" and "50th st" find "182-183 Sts" and "47-50 Sts".
    */
   static normalizeStationName(name: string): string {
     return name.toLowerCase()
       .trim()
+      .replace(/\b(\d+)-(\d+) sts\b/g, '$1 street $2 street')
       .replace(/\b(\d+)(st|nd|rd|th)\b/g, '$1')
       .replace(/\bave?\b/g, 'avenue')
       .replace(/\bst\b/g, 'street')

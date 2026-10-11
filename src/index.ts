@@ -569,7 +569,7 @@ export function createMcpServer() {
     "service_disruptions",
     {
       title: "Service Disruptions",
-      description: "Is subway service disrupted right now? Summarizes alerts in effect for the system, one line, or a location: overall status (normal / service_changes / disrupted), counts by severity, and each disruption with affected lines, affected stations, and when it is expected to end (Unix ms, when known)",
+      description: "Is subway service disrupted right now? Summarizes alerts in effect for the system, one line, or a location: overall status (normal / service_changes / disrupted), counts by severity, and each disruption with affected lines, affected stations, and when it is expected to end (Unix ms, when known). The system-wide overview shortens long descriptions; pass line or location for the full text",
       inputSchema: {
         line: z.string().optional().describe("Filter by specific train line"),
         location: z.string().optional().describe("Filter disruptions affecting a specific area or station"),

@@ -310,5 +310,44 @@
     "ada_notes": null,
     "gtfs_latitude": "40.752769",
     "gtfs_longitude": "-73.979189"
+  },
+  {
+    "gtfs_stop_id": "726",
+    "complex_id": "471",
+    "stop_name": "34 St-Hudson Yards",
+    "borough": "M",
+    "daytime_routes": "7",
+    "north_direction_label": "Last Stop",
+    "south_direction_label": "Queens",
+    "ada": "1",
+    "ada_notes": null,
+    "gtfs_latitude": "40.755882",
+    "gtfs_longitude": "-74.00191"
+  },
+  {
+    "gtfs_stop_id": "B10",
+    "complex_id": "224",
+    "stop_name": "57 St",
+    "borough": "M",
+    "daytime_routes": "M",
+    "north_direction_label": "Uptown",
+    "south_direction_label": "Downtown",
+    "ada": "1",
+    "ada_notes": null,
+    "gtfs_latitude": "40.763972",
+    "gtfs_longitude": "-73.97745"
+  },
+  {
+    "gtfs_stop_id": "R14",
+    "complex_id": "9",
+    "stop_name": "57 St-7 Av",
+    "borough": "M",
+    "daytime_routes": "N Q R W",
+    "north_direction_label": "Uptown",
+    "south_direction_label": "Downtown",
+    "ada": "1",
+    "ada_notes": null,
+    "gtfs_latitude": "40.764664",
+    "gtfs_longitude": "-73.980658"
   }
 ]

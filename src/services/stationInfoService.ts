@@ -131,13 +131,21 @@ export function stationServesLine(station: StationInfo, line: string): boolean {
   return station.routes.includes(normalized);
 }
 
-/** Platform direction label for a stop ID ending in N or S, e.g. "635N" → "Uptown". */
+const LAST_STOP = 'Last Stop';
+
+/**
+ * Platform direction label for a stop ID ending in N or S, e.g. "635N" → "Uptown".
+ * At a terminal the dataset labels one direction "Last Stop" (at 34 St-Hudson Yards, the one
+ * trains leave in). Arrivals never include trains ending their run, so a terminal uses the
+ * label of the direction trains depart in: "Queens" for both 726N and 726S.
+ */
 export function directionLabel(stopId: string): string | null {
   const suffix = stopId.slice(-1);
   if (suffix !== 'N' && suffix !== 'S') return null;
   const info = getStationInfo(stopId);
   if (!info) return suffix === 'N' ? 'Northbound' : 'Southbound';
-  return suffix === 'N' ? info.northLabel : info.southLabel;
+  const [label, other] = suffix === 'N' ? [info.northLabel, info.southLabel] : [info.southLabel, info.northLabel];
+  return label === LAST_STOP && other !== LAST_STOP ? other : label;
 }
 
 /**

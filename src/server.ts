@@ -166,6 +166,16 @@ function sweepIdleSessions(): void {
 const sessionSweeper = setInterval(sweepIdleSessions, SESSION_SWEEP_MS);
 sessionSweeper.unref();
 
+// A session ID we don't know (idle-swept, or lost in a redeploy). Per the MCP spec, 404 tells
+// the client to start a new session; a 400 doesn't.
+function sessionNotFound(res: express.Response): void {
+    res.status(404).json({
+        jsonrpc: "2.0",
+        error: { code: -32001, message: "Session not found" },
+        id: null
+    });
+}
+
 // Streamable HTTP transport (POST /mcp)
 app.post("/mcp", async (req, res) => {
     const sessionId = req.headers["mcp-session-id"] as string | undefined;
@@ -213,6 +223,9 @@ app.post("/mcp", async (req, res) => {
 
         const mcpServer = createMcpServer();
         await mcpServer.connect(transport);
+    } else if (sessionId) {
+        sessionNotFound(res);
+        return;
     } else {
         res.status(400).json({
             jsonrpc: "2.0",
@@ -232,6 +245,8 @@ app.get("/mcp", async (req, res) => {
 
     if (transport) {
         await transport.handleRequest(req, res);
+    } else if (sessionId) {
+        sessionNotFound(res);
     } else {
         // Return 405 Method Not Allowed per MCP spec when no valid session
         // This tells clients SSE is supported but requires a session first
@@ -250,6 +265,8 @@ app.delete("/mcp", async (req, res) => {
 
     if (transport) {
         await transport.handleRequest(req, res);
+    } else if (sessionId) {
+        sessionNotFound(res);
     } else {
         res.status(400).json({
             jsonrpc: "2.0",

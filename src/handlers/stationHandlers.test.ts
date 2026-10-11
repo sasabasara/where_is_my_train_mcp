@@ -3,7 +3,8 @@ import fs from 'fs';
 import path from 'path';
 import { parseCSV } from '../utils/csvParser.js';
 
-// Real rows from the MTA Subway Stations dataset and GTFS stops.txt (captured 2026-09-24)
+// Real rows from the MTA Subway Stations dataset and GTFS stops.txt (captured 2026-09-24;
+// 726, B10, R14 added 2026-10-11)
 const fixtureDir = path.join(__dirname, '../__fixtures__');
 const stationRows = JSON.parse(fs.readFileSync(path.join(fixtureDir, 'stations.json'), 'utf-8'));
 const stops = parseCSV(fs.readFileSync(path.join(fixtureDir, 'stops.txt'), 'utf-8'));
@@ -36,6 +37,7 @@ vi.mock('../services/mtaService.js', () => ({
       tripTo('4', 't9', '635N', 8, '401N'),   // uptown to Woodlawn (Bronx)
       tripTo('Q', 't10', 'R20S', 9, 'D43S'),  // downtown to Coney Island (Brooklyn), terminates there
       trip('D', 't11', 'D43N', 3),            // departs Coney Island
+      tripTo('7', 't13', '726N', 4, '701N'),  // departs Hudson Yards, the dataset's "Last Stop" platform
       { tripUpdate: { trip: { routeId: 'GS', tripId: 't12' }, stopTimeUpdate: [{ stopId: '902N', arrival: { time: inMinutes(2) } }] } } // shuttle ending at Times Sq
     ],
     feedStatus: { successful: 8, failed: 0, failedFeeds: [] }
@@ -170,7 +172,30 @@ describe('next_trains', () => {
   it('understands ordinals and offers the major hubs ("34th street")', async () => {
     const { data } = payload(await handleNextTrains({ station: '34th street' }));
     expect(data.ambiguous).toBe(true);
-    expect(data.options.map((o: any) => o.name).sort()).toEqual(['34 St-Herald Sq', '34 St-Penn Station', '34 St-Penn Station']);
+    expect(data.options.map((o: any) => o.name).sort()).toEqual(['34 St-Herald Sq', '34 St-Hudson Yards', '34 St-Penn Station', '34 St-Penn Station']);
+  });
+
+  it('offers stations named the query plus a qualifier ("57 st" includes 57 St-7 Av)', async () => {
+    const plain = payload(await handleNextTrains({ station: '57 st' })).data;
+    expect(plain.options.map((o: any) => o.name).sort()).toEqual(['57 St', '57 St-7 Av']);
+
+    const baruch = payload(await handleNextTrains({ station: '23 st' })).data;
+    expect(baruch.options.map((o: any) => o.name)).toContain('23 St-Baruch College');
+  });
+
+  it('a line picks the station it serves, even when another name fits better', async () => {
+    const n = payload(await handleNextTrains({ station: '57 st', line: 'N' })).data;
+    expect(n).toMatchObject({ station: '57 St-7 Av', stopIds: ['R14'] });
+    expect(n.note ?? '').not.toMatch(/isn't a daytime line/);
+
+    const six = payload(await handleNextTrains({ station: '23rd street', line: '6' })).data;
+    expect(six).toMatchObject({ station: '23 St-Baruch College', stopIds: ['634'] });
+  });
+
+  it('labels trains leaving a terminal with their direction, not "Last Stop"', async () => {
+    const { data } = payload(await handleNextTrains({ station: 'hudson yards' }));
+    expect(data.arrivals).toMatchObject([{ line: '7', stopId: '726N', direction: 'Queens' }]);
+    expect(data.availableDirections).toEqual(['Queens']);
   });
 });
 
@@ -215,7 +240,8 @@ describe('station_transfers', () => {
   it('asks which station for an ambiguous name', async () => {
     const { data } = payload(await handleStationTransfers({ station: '23 st' }));
     expect(data.ambiguous).toBe(true);
-    expect(data.options).toHaveLength(4);
+    expect(data.options).toHaveLength(5);
+    expect(data.options.map((o: any) => o.name)).toContain('23 St-Baruch College');
   });
 
   it('lists every line reachable in the complex', async () => {

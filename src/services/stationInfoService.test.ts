@@ -43,6 +43,14 @@ describe('directions', () => {
     expect(directionLabel('725')).toBeNull();
   });
 
+  it('gives terminals the direction trains leave in, never "Last Stop"', () => {
+    // Coney Island: dataset says S = "Last Stop"; Hudson Yards has it on the departing N platform
+    expect(directionLabel('D43N')).toBe('Manhattan');
+    expect(directionLabel('D43S')).toBe('Manhattan');
+    expect(directionLabel('726N')).toBe('Queens');
+    expect(directionMatches('726N', 'queens')).toBe(true);
+  });
+
   it('matches rider phrasing against labels, with north/south fallback', () => {
     expect(directionMatches('635N', 'uptown')).toBe(true);
     expect(directionMatches('635S', 'uptown')).toBe(false);

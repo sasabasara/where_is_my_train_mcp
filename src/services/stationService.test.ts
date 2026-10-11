@@ -78,7 +78,7 @@ describe('StationMatcher.normalizeStationName — rider phrasing', () => {
     ['Jackson Hts-Roosevelt Av', 'jackson heights roosevelt avenue'],
     ['W 4 St-Wash Sq', 'west 4 street washington square'],
     ['West 4th St', 'west 4 street'],
-    ['47-50 Sts-Rockefeller Ctr', '47 50 sts rockefeller center'],
+    ['47-50 Sts-Rockefeller Ctr', '47 street 50 street rockefeller center'],
     ['42 St-Bryant Pk', '42 street bryant park'],
   ])('%s → %s', (input, expected) => {
     expect(StationMatcher.normalizeStationName(input)).toBe(expected);
@@ -96,6 +96,12 @@ describe('StationMatcher.findBestMatches', () => {
     const names = StationMatcher.findBestMatches('42nd st', stops).map(m => m.stop_name);
     expect(names).not.toContain('Van Cortlandt Park-242 St');
     expect(names).toContain('42 St-Bryant Pk');
+  });
+
+  it('finds street-range stations by either street ("182nd st" → 182-183 Sts)', () => {
+    const stops = [...mockStops, { stop_id: 'D06', stop_name: '182-183 Sts', location_type: '1', parent_station: '', stop_lat: '0', stop_lon: '0' }];
+    expect(StationMatcher.findBestMatches('182nd st', stops).map(m => m.stop_name)).toEqual(['182-183 Sts']);
+    expect(StationMatcher.findBestMatches('183 street', stops).map(m => m.stop_name)).toEqual(['182-183 Sts']);
   });
 
   it('allows partial matching for 3-letter queries like "lex"', () => {

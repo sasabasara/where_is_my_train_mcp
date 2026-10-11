@@ -1,5 +1,5 @@
 import { getServiceContext } from '../utils/time.js';
-import { getStopName } from './stationService.js';
+import { getStopName, StationMatcher } from './stationService.js';
 import type { AlertCategory, AlertSeverity, ServiceDisruptionsArgs, SubwayAlert } from '../types/index.js';
 
 export interface DisruptionInfo {
@@ -13,6 +13,17 @@ export interface DisruptionInfo {
   activeUntil: number | null;
 }
 
+// The system-wide overview lists every disruption; full planned-work text for all of them
+// runs to thousands of tokens. A line or location query gets the full text.
+const OVERVIEW_DESCRIPTION_CHARS = 300;
+
+function shorten(text: string | null): string | null {
+  if (!text || text.length <= OVERVIEW_DESCRIPTION_CHARS) return text;
+  const cut = text.slice(0, OVERVIEW_DESCRIPTION_CHARS);
+  const lastSpace = cut.lastIndexOf(' ');
+  return `${(lastSpace > 0 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
+}
+
 export class ServiceDisruptionAnalyzer {
   /**
    * @param alerts Currently active alerts, already filtered by line/severity and sorted most severe first
@@ -22,12 +33,19 @@ export class ServiceDisruptionAnalyzer {
     let disruptions = alerts.map(alert => this.toDisruption(alert));
 
     if (params.location) {
-      const locationLower = params.location.toLowerCase();
+      // Normalized like station names and matched at a word start, so "union square" and
+      // "14th street" match "14 St-Union Sq" (but "14th street" doesn't match "114 St")
+      const q = ` ${StationMatcher.normalizeStationName(params.location)}`;
+      const mentions = (text: string | null) => ` ${StationMatcher.normalizeStationName(text ?? '')}`.includes(q);
       disruptions = disruptions.filter(d =>
-        d.affectedStations.some(station => station.toLowerCase().includes(locationLower)) ||
-        d.title.toLowerCase().includes(locationLower) ||
-        (d.description ?? '').toLowerCase().includes(locationLower)
+        d.affectedStations.some(mentions) || mentions(d.title) || mentions(d.description)
       );
+    }
+
+    const descriptionsShortened = !params.line && !params.location &&
+      disruptions.some(d => (d.description?.length ?? 0) > OVERVIEW_DESCRIPTION_CHARS);
+    if (descriptionsShortened) {
+      disruptions = disruptions.map(d => ({ ...d, description: shorten(d.description) }));
     }
 
     const count = (severity: AlertSeverity) => disruptions.filter(d => d.severity === severity).length;
@@ -52,6 +70,7 @@ export class ServiceDisruptionAnalyzer {
       systemStatus,
       counts,
       disruptions,
+      descriptionsShortened,
       serviceNote: serviceContext.serviceNote || null
     };
   }
