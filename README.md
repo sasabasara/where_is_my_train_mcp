@@ -2,9 +2,9 @@
 
 [![Smithery](https://img.shields.io/badge/Smithery-Where's%20my%20train%3F-7c3aed)](https://smithery.ai/servers/sasabasara/where_is_my_train_mcp)
 
-Live NYC subway info for Claude and other AI assistants: arrivals, delays, elevators, and stations — straight from MTA feeds.
+NYC subway info for Claude and other AI assistants: train arrivals, delays, elevators, and stations, from MTA data feeds.
 
-> Data from the MTA • Personal use only • Not endorsed by the MTA • Provided “as is”
+> Data from MTA feeds, served from this project's own server. It **may not be real time**, and may be inaccurate or incomplete. Personal use only. Not affiliated with, endorsed, or licensed by the MTA. Provided “as is”.
 
 ## Connect
 
@@ -37,7 +37,7 @@ If a name fits several stations ("23rd St"), it asks which one.
 
 | Tool | What it does |
 |---|---|
-| `next_trains` | Live arrivals by station or stop ID, filtered by line and direction |
+| `next_trains` | Predicted arrivals by station or stop ID, filtered by line and direction |
 | `service_disruptions` | Is service disrupted right now — by line, area, or system-wide |
 | `subway_alerts` | Official MTA alerts, current or upcoming |
 | `service_status` | Quick snapshot: trains running and top alerts |
@@ -48,7 +48,7 @@ If a name fits several stations ("23rd St"), it asks which one.
 
 ## Data
 
-- **Arrivals:** MTA GTFS-realtime feeds (protobuf), refreshed about every 30 seconds. `confirmed: true` means a real train is on its way, not just a scheduled trip.
+- **Arrivals:** MTA GTFS-realtime feeds (protobuf), refreshed about every 30 seconds, so times can lag the MTA by a minute or more. `confirmed: true` means a real train is on its way, not just a scheduled trip.
 - **Alerts:** MTA service alerts, with the MTA's own type and severity.
 - **Elevators:** MTA elevator and escalator outage feeds.
 - **Stations:** MTA static GTFS plus the [MTA Subway Stations](https://data.ny.gov/resource/39hk-dx4f) list for complexes, directions, and accessibility.

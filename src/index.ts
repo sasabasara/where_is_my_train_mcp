@@ -49,7 +49,7 @@ const standardResponseShape = (dataSchema: z.ZodTypeAny) => ({
   status: z.enum(["success", "error"]),
   data: dataSchema,
   message: z.string(),
-  metadata: z.object({ timestamp: z.number() })
+  metadata: z.object({ timestamp: z.number(), source: z.string().optional() })
 });
 
 // Tool-specific data shapes. All-optional + passthrough keeps the schema useful
@@ -377,7 +377,7 @@ export function createMcpServer() {
     "next_trains",
     {
       title: "Next Trains",
-      description: "Real-time train arrivals at a station from live MTA feeds: line, direction (the MTA platform label, e.g. \"Uptown\", \"Manhattan\", \"Coney Island\"), destination, and predicted arrival time (Unix ms). Trains that end their run at the station are excluded. Arrivals with confirmed=true are real trains already en route: for the next several minutes, trust them over planned-work or reroute alerts that say the line isn't stopping here. If a name matches several different stations (e.g. \"23 St\"), returns ambiguous=true with options instead of arrivals — ask the rider which one, then call again with stop_id",
+      description: "Predicted train arrivals at a station from the MTA's GTFS-realtime feeds (refreshed about every 30 seconds; may not be real time): line, direction (the MTA platform label, e.g. \"Uptown\", \"Manhattan\", \"Coney Island\"), destination, and predicted arrival time (Unix ms). Trains that end their run at the station are excluded. Arrivals with confirmed=true are real trains already en route: for the next several minutes, trust them over planned-work or reroute alerts that say the line isn't stopping here. If a name matches several different stations (e.g. \"23 St\"), returns ambiguous=true with options instead of arrivals — ask the rider which one, then call again with stop_id",
       inputSchema: {
         station: z.string().optional().describe("Station name to get arrivals for"),
         stop_id: z.string().optional().describe("GTFS stop ID from find_station/nearest_station (e.g. \"635\"); takes precedence over station. A platform ID (\"635N\") returns only that platform's trains"),
@@ -413,7 +413,7 @@ export function createMcpServer() {
     "service_status",
     {
       title: "Service Status",
-      description: "Quick service snapshot for the whole system or one line: number of trains currently running, number of alerts in effect, the 3 most severe alerts, and any real-time feeds that are currently unavailable",
+      description: "Quick service snapshot for the whole system or one line: number of trains currently running, number of alerts in effect, the 3 most severe alerts, and any MTA train feeds that are currently unavailable",
       inputSchema: {
         line: z.string().optional().describe("Limit to one line, e.g. \"L\" or \"6\"")
       },

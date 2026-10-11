@@ -40,7 +40,9 @@ function createStandardResponse(data: any, message: string, isError = false): To
     data,
     message,
     metadata: {
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      // MTA terms: tell users the data may not be real time; don't present it as accurate or timely
+      source: "MTA data feeds; may not be real time"
     }
   };
 

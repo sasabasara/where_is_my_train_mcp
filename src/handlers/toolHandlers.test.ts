@@ -49,6 +49,14 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+describe('every response', () => {
+  it('says the data comes from MTA feeds and may not be real time (MTA terms)', async () => {
+    for (const result of [await handleServiceStatus({}), await handleElevatorEscalatorStatus({})]) {
+      expect(payload(result).metadata.source).toBe('MTA data feeds; may not be real time');
+    }
+  });
+});
+
 describe('service_disruptions', () => {
   it('reports disruption when active delays/suspensions exist', async () => {
     const { data } = payload(await handleServiceDisruptions({}));
