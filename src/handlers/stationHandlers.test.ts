@@ -117,6 +117,20 @@ describe('audit regressions', () => {
     expect(result.data.arrivals.map((a: any) => a.tripId)).toEqual(['running']);
   });
 
+  it('reports missing predictions without guessing a suspension', async () => {
+    vi.mocked(fetchMTAData).mockResolvedValueOnce({ entity: [] } as any);
+    const result = payload(await handleNextTrains({ stop_id: '635N' }));
+    expect(result.data.count).toBe(0);
+    expect(result.data.note).toContain('currently reported by the MTA');
+    expect(result.data.note).not.toMatch(/suspended|may not run/);
+  });
+
+  it('continues excluding expired arrivals when predictions come from an earlier snapshot', async () => {
+    vi.mocked(fetchMTAData).mockResolvedValueOnce({ entity: [trip('6', 'past', '635N', -2), trip('6', 'future', '635N', 2)] } as any);
+    const result = payload(await handleNextTrains({ stop_id: '635N' }));
+    expect(result.data.arrivals.map((a: any) => a.tripId)).toEqual(['future']);
+  });
+
   it('identifies arrivals served from a stale feed', async () => {
     vi.mocked(fetchMTAData).mockResolvedValueOnce({ entity: [trip('6', 'cached', '635N', 3)], feedStatus: { failedFeeds: [], staleFeeds: ['1234567s'] } } as any);
     const result = payload(await handleNextTrains({ stop_id: '635N' }));

@@ -303,7 +303,7 @@ export async function handleNextTrains(args: NextTrainsArgs): Promise<ToolRespon
       }
     }
     if (arrivals.length === 0) {
-      notes.push(`No upcoming ${args.line ? `${args.line.toUpperCase()} ` : ''}trains in the real-time feed for this station right now — the line may not run at this hour or may be suspended (see service_disruptions).`);
+      notes.push(`No upcoming ${args.line ? `${args.line.toUpperCase()} ` : ''}trains are currently reported by the MTA for this station. Check service alerts (service_disruptions).`);
     }
 
     const limit = Math.min(Math.max(Math.trunc(args.limit ?? 5) || 5, 1), 10);
