@@ -3,6 +3,8 @@ import fs from 'fs';
 import path from 'path';
 import {
   setStations,
+  riderLine,
+  riderLines,
   normalizeDirection,
   compassDirection,
   getComplexRoutes,
@@ -35,6 +37,19 @@ describe('routeMatchesLine', () => {
     expect(routeMatchesLine('SI', 'SIR')).toBe(true);
     expect(routeMatchesLine('5', '6')).toBe(false);
     expect(routeMatchesLine(undefined, '6')).toBe(false);
+  });
+});
+
+describe('riderLine', () => {
+  it('uses the names riders see, not feed route IDs', () => {
+    expect(riderLine('FS')).toEqual({ line: 'S', express: false });
+    expect(riderLine('GS')).toEqual({ line: 'S', express: false });
+    expect(riderLine('H')).toEqual({ line: 'S', express: false });
+    expect(riderLine('SI')).toEqual({ line: 'SIR', express: false });
+    expect(riderLine('6X')).toEqual({ line: '6', express: true });
+    expect(riderLine('FX')).toEqual({ line: 'F', express: true });
+    expect(riderLine('A')).toEqual({ line: 'A', express: false });
+    expect(riderLines(['6X', 'FS', '6', 'GS', 'SI', '2'])).toEqual(['2', '6', 'S', 'SIR']);
   });
 });
 

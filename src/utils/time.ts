@@ -39,3 +39,38 @@ export function getServiceContext(now = new Date()): { isWeekend: boolean; timeO
 
   return { isWeekend, timeOfDay, serviceNote };
 }
+
+const NYC_PARTS = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/New_York',
+  year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', second: '2-digit',
+  hourCycle: 'h23', timeZoneName: 'longOffset'
+});
+
+/** New York local time with its UTC offset, e.g. 1791765220000 → "2026-10-11T20:33:40-04:00". */
+export function nycIso(ms: number): string {
+  const p = Object.fromEntries(NYC_PARTS.formatToParts(new Date(ms)).map(part => [part.type, part.value]));
+  const offset = p.timeZoneName === 'GMT' ? '+00:00' : p.timeZoneName.replace('GMT', '');
+  return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}${offset}`;
+}
+
+/** Offset of New York from UTC at an instant, in ms (e.g. -4h in summer). */
+function nycOffsetMs(ms: number): number {
+  const [, sign, h, m] = nycIso(ms).match(/([+-])(\d{2}):(\d{2})$/)!;
+  return (sign === '-' ? -1 : 1) * (Number(h) * 60 + Number(m)) * 60000;
+}
+
+/**
+ * The MTA's New York local time strings ("10/03/2026 07:20:00 PM", elevator feed) in the same
+ * ISO form as nycIso. Returns null for anything else.
+ */
+export function mtaLocalTimeToIso(text: string | null | undefined): string | null {
+  const m = text?.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4}) (\d{1,2}):(\d{2})(?::(\d{2}))? ?(AM|PM)$/i);
+  if (!m) return null;
+  const [, month, day, year, hour12, minute, second = '0', ampm] = m;
+  const hour = (Number(hour12) % 12) + (ampm.toUpperCase() === 'PM' ? 12 : 0);
+  const asUtc = Date.UTC(Number(year), Number(month) - 1, Number(day), hour, Number(minute), Number(second));
+  // Shift by New York's offset, re-checking it at the result in case DST changes in between
+  const guess = asUtc - nycOffsetMs(asUtc);
+  return nycIso(asUtc - nycOffsetMs(guess));
+}

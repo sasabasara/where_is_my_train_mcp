@@ -128,6 +128,23 @@ export function routeMatchesLine(routeId: string | undefined, line: string): boo
   return false;
 }
 
+/**
+ * What riders call a feed route ID: the three shuttles (GS, FS, H) are all "S", SI is "SIR",
+ * and the express variants 6X, 7X and FX are their line with express: true.
+ */
+export function riderLine(routeId: string): { line: string; express: boolean } {
+  const r = routeId.trim().toUpperCase();
+  if (['GS', 'FS', 'H'].includes(r)) return { line: 'S', express: false };
+  if (r === 'SI') return { line: 'SIR', express: false };
+  const express = r.match(/^([0-9A-Z])X$/);
+  return express ? { line: express[1], express: true } : { line: r, express: false };
+}
+
+/** Rider line names for feed route IDs, deduplicated and in display order (["6X", "FS"] → ["6", "S"]). */
+export function riderLines(routeIds: string[]): string[] {
+  return sortRoutes([...new Set(routeIds.map(id => riderLine(id).line))]);
+}
+
 /** A station's daytime routes include the line (dataset uses "S" for shuttles and "SIR"). */
 export function stationServesLine(station: StationInfo, line: string): boolean {
   const l = line.trim().toUpperCase().replace(/X$/, '');

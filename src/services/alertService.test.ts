@@ -1,7 +1,16 @@
 import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('./mtaService.js', () => ({ fetchMTAAlerts: vi.fn() }));
-const { mergeSplitAlerts, parseAlert } = await import('./alertService.js');
+const { mergeSplitAlerts, parseAlert, showIcons } = await import('./alertService.js');
+
+describe('alert text', () => {
+  it('shows MTA icon placeholders as words, keeping line bullets', () => {
+    expect(showIcons('59 St-Columbus Circle [accessibility icon] | [A][D][1]')).toBe('59 St-Columbus Circle (accessible) | [A][D][1]');
+    expect(showIcons('Free [shuttle bus icon] T464 buses')).toBe('Free (shuttle bus) T464 buses');
+    const alert = parseAlert({ id: 'x', alert: { header_text: { translation: [{ language: 'en', text: 'Use [accessibility icon] stations' }] } } });
+    expect(alert?.header).toBe('Use (accessible) stations');
+  });
+});
 
 describe('alert timing', () => {
   it('shows an alert with no active_period for as long as it is present in the feed', () => {

@@ -11,10 +11,13 @@ import {
   directionMatches,
   normalizeDirection,
   compassDirection,
+  riderLine,
+  riderLines,
   sortRoutes
 } from "../services/stationInfoService.js";
-import { StationMatcher, getStopsData, getTransfersData, getStopName, isKnownStop, ensureDataLoaded } from "../services/stationService.js";
+import { StationMatcher, getStopsData, getTransfersData, getRoutesData, getStopName, isKnownStop, ensureDataLoaded } from "../services/stationService.js";
 import { calculateDistance } from "../utils/index.js";
+import { nycIso, mtaLocalTimeToIso } from "../utils/time.js";
 import { ServiceDisruptionAnalyzer } from "../services/serviceDisruptions.js";
 import {
   StandardResponse,
@@ -56,13 +59,59 @@ function createStandardResponse(data: any, message: string, isError = false): To
   };
 }
 
-// New tool handlers
+/**
+ * Trips on a line in the live feeds (canceled ones excluded). null when there are none but a
+ * feed is down, so "no trains" is only claimed when every feed answered.
+ */
+function liveTripsOnLine(data: any, line: string): number | null {
+  const trips = (data?.entity ?? []).filter((e: any) => !e.isDeleted && e.tripUpdate?.trip &&
+    !['CANCELED', 'DELETED'].includes(e.tripUpdate.trip.scheduleRelationship) &&
+    routeMatchesLine(e.tripUpdate.trip.routeId, line)).length;
+  return trips === 0 && (data?.feedStatus?.failedFeeds?.length ?? 1) > 0 ? null : trips;
+}
+
+/**
+ * When a line normally runs, in the MTA's words (routes.txt), e.g. the B: "Trains operate,
+ * weekdays only, ...". Lets a rider hear why there are no trains instead of "all normal".
+ */
+/** A line as riders say it: "B", "S", "SIR", "6 express". */
+function lineName(line: string): string {
+  const { line: name, express } = riderLine(line);
+  return express ? `${name} express` : name;
+}
+
+function servicePattern(line: string): string | null {
+  const { line: wanted, express } = riderLine(line);
+  const descriptions = getRoutesData()
+    .filter(route => riderLine(route.route_id).line === wanted && riderLine(route.route_id).express === express && route.route_desc)
+    .map(route => wanted === 'S' ? `${route.route_long_name}: ${route.route_desc}` : route.route_desc);
+  return descriptions.length > 0 ? descriptions.join(' ') : null;
+}
+
 export async function handleServiceDisruptions(args: ServiceDisruptionsArgs): Promise<ToolResponse> {
   try {
-    const alerts = await getSubwayAlerts({ line: args.line, severity: args.severity, activeOnly: true });
+    const [alerts, data] = await Promise.all([
+      getSubwayAlerts({ line: args.line, severity: args.severity, activeOnly: true }),
+      args.line ? fetchMTAData().catch(() => null) : null
+    ]);
     const analysis = ServiceDisruptionAnalyzer.analyze(args, alerts);
+    const result: Record<string, unknown> = { ...analysis };
     const shortened = analysis.descriptionsShortened ? ' (descriptions shortened; pass line or location for the full text)' : '';
-    return createStandardResponse(analysis, `Service disruption analysis for ${args.line || args.location || 'system'}${shortened}`);
+    let message = `Service disruption analysis for ${args.line || args.location || 'system'}${shortened}`;
+
+    // No alerts doesn't mean trains are running: the B has none on weekends
+    if (args.line) {
+      const line = lineName(args.line);
+      const running = liveTripsOnLine(data, args.line);
+      result.trainsRunning = running;
+      if (running === 0) {
+        await ensureDataLoaded();
+        if (analysis.systemStatus === 'normal') result.systemStatus = 'no_trains_reported';
+        result.servicePattern = servicePattern(args.line);
+        message = `No ${line} trains are currently reported by the MTA${result.servicePattern ? '; servicePattern says when the line normally runs' : ''}. ${analysis.counts.total} alert(s) in effect for the ${line}`;
+      }
+    }
+    return createStandardResponse(result, message);
   } catch (error) {
     return createStandardResponse(null, "Service disruption analysis temporarily unavailable.", true);
   }
@@ -252,11 +301,17 @@ export async function handleNextTrains(args: NextTrainsArgs): Promise<ToolRespon
         if (arrivalTimestamp === null || !Number.isFinite(arrivalTimestamp)) continue;
         if (arrivalTimestamp < now - PAST_GRACE_MS) continue;
 
+        // Line as riders know it ("S", "SIR", "6"); the feed's route ID only when it differs
+        const { line, express } = riderLine(trip.routeId);
         arrivals.push({
-          line: trip.routeId,
+          line,
+          ...(express && { express: true }),
+          ...(line !== trip.routeId && { routeId: trip.routeId }),
           direction: directionLabel(update.stopId),
           destination: terminal?.stopId ? getStopName(terminal.stopId) : 'Unknown destination',
           destinationBorough: terminalInfo ? BOROUGHS[terminalInfo.borough] ?? null : null,
+          arrivalTime: nycIso(arrivalTimestamp),
+          minutesAway: Math.max(0, Math.round((arrivalTimestamp - now) / 60000)),
           arrivalTimestamp,
           station: getStationInfo(base)?.name ?? stationName,
           stopId: update.stopId,
@@ -342,16 +397,25 @@ export async function handleServiceStatus(args: ServiceStatusArgs): Promise<Tool
       !['CANCELED', 'DELETED'].includes(e.tripUpdate.trip.scheduleRelationship) &&
       (!line || routeMatchesLine(e.tripUpdate.trip.routeId, line)));
 
-    const result = {
+    const result: Record<string, unknown> = {
       line: line || null,
       activeTrips: trips.length,
       activeAlerts: alerts.length,
-      topAlerts: alerts.slice(0, 3).map(a => ({ header: a.header, severity: a.severity, alertType: a.alertType, affectedLines: a.affectedLines })),
+      topAlerts: alerts.slice(0, 3).map(a => ({ header: a.header, severity: a.severity, alertType: a.alertType, affectedLines: riderLines(a.affectedLines) })),
       unavailableFeeds: data.feedStatus?.failedFeeds ?? [],
       staleFeeds: data.feedStatus?.staleFeeds ?? []
     };
 
-    return createStandardResponse(result, `Service status for ${line ? `the ${line} line` : 'the system'}`);
+    let message = `Service status for ${line ? `the ${line} line` : 'the system'}`;
+    if (alerts.length > 3) {
+      message += `: showing the 3 most severe of ${alerts.length} alerts (subway_alerts lists them all)`;
+    }
+    if (line && liveTripsOnLine(data, line) === 0) {
+      await ensureDataLoaded();
+      result.servicePattern = servicePattern(line);
+      message += `. No ${lineName(line)} trains are currently reported by the MTA${result.servicePattern ? '; servicePattern says when the line normally runs' : ''}`;
+    }
+    return createStandardResponse(result, message);
   } catch (error) {
     return createStandardResponse(null, "Service status temporarily unavailable.", true);
   }
@@ -376,10 +440,13 @@ export async function handleSubwayAlerts(args: SubwayAlertsArgs): Promise<ToolRe
         alertType: a.alertType,
         severity: a.severity,
         category: a.category,
-        affectedLines: a.affectedLines,
+        affectedLines: riderLines(a.affectedLines),
         isActive: a.isActive,
-        activePeriod: a.activePeriod,
-        updatedAt: a.updatedAt
+        activePeriod: a.activePeriod && {
+          start: a.activePeriod.start ? nycIso(a.activePeriod.start) : null,
+          end: a.activePeriod.end ? nycIso(a.activePeriod.end) : null
+        },
+        updatedAt: a.updatedAt ? nycIso(a.updatedAt) : null
       }))
     };
 
@@ -534,8 +601,9 @@ export async function handleElevatorEscalatorStatus(args: ElevatorEscalatorStatu
       ada: item.ADA === 'Y',
       status: item.isupcomingoutage === 'Y' ? 'Upcoming Work' : 'Currently Out',
       reason: item.reason,
-      outageStart: item.outagedate,
-      estimatedReturn: item.estimatedreturntoservice || null,
+      // The MTA gives New York local times as "MM/DD/YYYY hh:mm:ss PM"; same ISO form as other tools
+      outageStart: mtaLocalTimeToIso(item.outagedate) ?? item.outagedate,
+      estimatedReturn: mtaLocalTimeToIso(item.estimatedreturntoservice) ?? (item.estimatedreturntoservice || null),
       alternativeRoute: equipmentById.get(item.equipment)?.alternativeroute || null
     }));
 

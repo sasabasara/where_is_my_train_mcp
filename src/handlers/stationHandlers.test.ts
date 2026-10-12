@@ -153,7 +153,7 @@ beforeAll(() => {
 describe('next_trains', () => {
   it('filters by direction using the MTA platform label', async () => {
     const { data } = payload(await handleNextTrains({ station: 'union sq', direction: 'uptown' }));
-    expect(data.arrivals.map((a: any) => a.line)).toEqual(['6', '6X', '4']);
+    expect(data.arrivals.map((a: any) => a.line)).toEqual(['6', '6', '4']);
     expect(data.arrivals.every((a: any) => a.direction === 'Uptown')).toBe(true);
   });
 
@@ -169,9 +169,18 @@ describe('next_trains', () => {
     expect(data.arrivals.map((a: any) => [a.tripId, a.confirmed])).toEqual([['t1', true], ['t2', false]]);
   });
 
-  it('line "6" includes the 6X express', async () => {
+  it('line "6" includes the 6X express, shown as the 6 with express: true', async () => {
     const { data } = payload(await handleNextTrains({ station: 'union sq', line: '6' }));
-    expect(data.arrivals.map((a: any) => a.line)).toEqual(['6', '6X']);
+    expect(data.arrivals).toMatchObject([{ line: '6' }, { line: '6', express: true, routeId: '6X' }]);
+    expect(data.arrivals[0].express).toBeUndefined();
+    expect(data.arrivals[0].routeId).toBeUndefined();
+  });
+
+  it('gives arrival times as New York local time and minutes away', async () => {
+    const { data } = payload(await handleNextTrains({ stop_id: '130' }));
+    // NOW is 2026-09-24 01:00 UTC = 9:00 PM ET; the 1 train is due in 1 minute
+    expect(data.arrivals[0]).toMatchObject({ arrivalTime: '2026-09-23T21:01:00-04:00', minutesAway: 1 });
+    expect(data.arrivals[0].arrivalTimestamp).toBe(NOW + 60_000);
   });
 
   it('asks which station when a name matches several separate stations', async () => {
@@ -287,12 +296,12 @@ describe('next_trains', () => {
   it('a platform stop_id ("635N") returns only that platform', async () => {
     const { data } = payload(await handleNextTrains({ stop_id: '635n' }));
     expect(data.arrivals.map((a: any) => a.stopId)).toEqual(['635N', '635N', '635N']);
-    expect(data.arrivals.map((a: any) => a.line)).toEqual(['6', '6X', '4']);
+    expect(data.arrivals.map((a: any) => a.line)).toEqual(['6', '6', '4']);
   });
 
   it('names the last real station as the destination when the feed ends a trip on a relay track', async () => {
     const beach90 = payload(await handleNextTrains({ station: 'beach 90 st' })).data;
-    expect(beach90.arrivals).toMatchObject([{ line: 'H', destination: 'Broad Channel' }]);
+    expect(beach90.arrivals).toMatchObject([{ line: 'S', routeId: 'H', destination: 'Broad Channel' }]);
 
     // ...and the shuttle ends its run at Broad Channel, so it isn't a train to board there
     const broadChannel = payload(await handleNextTrains({ station: 'broad channel' })).data;

@@ -84,9 +84,13 @@ const nextTrainsOutputSchema = standardResponseShape(
     note: z.string().optional(),
     arrivals: z.array(z.object({
       line: z.string().optional(),
+      express: z.boolean().optional(),
+      routeId: z.string().optional(),
       direction: z.string().nullable().optional(),
       destination: z.string().nullable().optional(),
       destinationBorough: z.string().nullable().optional(),
+      arrivalTime: z.string().optional(),
+      minutesAway: z.number().optional(),
       arrivalTimestamp: z.number().nullable().optional(),
       station: z.string().optional(),
       stopId: z.string().optional(),
@@ -117,7 +121,8 @@ const serviceStatusOutputSchema = standardResponseShape(
       affectedLines: z.array(z.string())
     }).passthrough()).optional(),
     unavailableFeeds: z.array(z.string()).optional(),
-    staleFeeds: z.array(z.string()).optional()
+    staleFeeds: z.array(z.string()).optional(),
+    servicePattern: z.string().nullable().optional()
   }).passthrough().nullable()
 );
 
@@ -133,8 +138,8 @@ const subwayAlertsOutputSchema = standardResponseShape(
       category: z.enum(alertCategories),
       affectedLines: z.array(z.string()),
       isActive: z.boolean(),
-      activePeriod: z.object({ start: z.number(), end: z.number().nullable() }).nullable(),
-      updatedAt: z.number().nullable()
+      activePeriod: z.object({ start: z.string().nullable(), end: z.string().nullable() }).nullable(),
+      updatedAt: z.string().nullable()
     }).passthrough())
   }).passthrough().nullable()
 );
@@ -168,7 +173,9 @@ const serviceDisruptionsOutputSchema = standardResponseShape(
     filteredLine: z.string().nullable().optional(),
     filteredLocation: z.string().nullable().optional(),
     filteredSeverity: z.string().nullable().optional(),
-    systemStatus: z.enum(["normal", "service_changes", "disrupted"]).optional(),
+    systemStatus: z.enum(["normal", "service_changes", "disrupted", "no_trains_reported"]).optional(),
+    trainsRunning: z.number().nullable().optional(),
+    servicePattern: z.string().nullable().optional(),
     counts: z.object({
       total: z.number(),
       critical: z.number(),
@@ -380,7 +387,7 @@ export function createMcpServer() {
     "next_trains",
     {
       title: "Next Trains",
-      description: "Predicted train arrivals at a station from the MTA's GTFS-realtime feeds (refreshed about every 30 seconds; may not be real time): line, direction (the MTA platform label, e.g. \"Uptown\", \"Manhattan\", \"Coney Island\"), destination, and predicted arrival time (Unix ms). Trains that end their run at the station are excluded. Arrivals with confirmed=true are real trains already en route: for the next several minutes, trust them over planned-work or reroute alerts that say the line isn't stopping here. If a name matches several different stations (e.g. \"23 St\"), returns ambiguous=true with options instead of arrivals — ask the rider which one, then call again with stop_id",
+      description: "Predicted train arrivals at a station from the MTA's GTFS-realtime feeds (refreshed about every 30 seconds; may not be real time): line as riders know it (shuttles are \"S\", Staten Island Railway \"SIR\"; express=true for the 6/7/F express), direction (the MTA platform label, e.g. \"Uptown\", \"Manhattan\", \"Coney Island\"), destination, and predicted arrival as arrivalTime (New York local time, ISO 8601) and minutesAway (arrivalTimestamp is the same time in Unix ms). Trains that end their run at the station are excluded. Arrivals with confirmed=true are real trains already en route: for the next several minutes, trust them over planned-work or reroute alerts that say the line isn't stopping here. If a name matches several different stations (e.g. \"23 St\"), returns ambiguous=true with options instead of arrivals — ask the rider which one, then call again with stop_id",
       inputSchema: {
         station: z.string().optional().describe("Station name to get arrivals for"),
         stop_id: z.string().optional().describe("GTFS stop ID from find_station/nearest_station (e.g. \"635\"); takes precedence over station. A platform ID (\"635N\") returns only that platform's trains"),
@@ -448,7 +455,7 @@ export function createMcpServer() {
     "subway_alerts",
     {
       title: "Subway Alerts",
-      description: "Official MTA subway service alerts, most severe first. Each alert includes the MTA alert type (e.g. \"Delays\", \"Part Suspended\", \"Planned - Stops Skipped\"), severity, category, affected lines, and active period (Unix ms). Only alerts in effect right now by default; set active_only=false to include upcoming planned work",
+      description: "Official MTA subway service alerts, most severe first. Each alert includes the MTA alert type (e.g. \"Delays\", \"Part Suspended\", \"Planned - Stops Skipped\"), severity, category, affected lines, and active period (New York local time, ISO 8601). Only alerts in effect right now by default; set active_only=false to include upcoming planned work",
       inputSchema: {
         line: z.string().optional().describe("Filter alerts by specific train line"),
         active_only: z.boolean().optional().describe("Only alerts in effect right now (default: true)"),
@@ -555,7 +562,7 @@ export function createMcpServer() {
     "service_disruptions",
     {
       title: "Service Disruptions",
-      description: "Is subway service disrupted right now? Summarizes alerts in effect for the system, one line, or a location: overall status (normal / service_changes / disrupted), counts by severity, and each disruption with affected lines, affected stations, and when it is expected to end (Unix ms, when known). The system-wide overview shortens long descriptions; pass line or location for the full text",
+      description: "Is subway service disrupted right now? Summarizes alerts in effect for the system, one line, or a location: overall status (normal / service_changes / disrupted, or for one line no_trains_reported when the MTA reports none of its trains running, e.g. the B on weekends, with trainsRunning and the MTA's servicePattern), counts by severity, and each disruption with affected lines, affected stations, and when it is expected to end (New York local time, when known). The system-wide overview shortens long descriptions; pass line or location for the full text",
       inputSchema: {
         line: z.string().optional().describe("Filter by specific train line"),
         location: z.string().optional().describe("Filter disruptions affecting a specific area or station"),

@@ -34,7 +34,18 @@ const CATEGORY_BY_PRIORITY: Record<number, AlertCategory> = {
 function englishText(translated: any): string {
   const translations: any[] = translated?.translation ?? [];
   const en = translations.find(t => t.language === 'en') ?? translations[0];
-  return en?.text ?? '';
+  return showIcons(en?.text ?? '');
+}
+
+/**
+ * The plain-text alerts mark MTA icons as "[accessibility icon]" / "[shuttle bus icon]"; mta.info
+ * draws them as pictures. Show them as words, so a reply read aloud doesn't say "icon".
+ * Line bullets like "[L]" stay as they are.
+ */
+export function showIcons(text: string): string {
+  return text
+    .replace(/\[accessibility icon\]/gi, '(accessible)')
+    .replace(/\[([a-z][a-z -]*?) icon\]/gi, '($1)');
 }
 
 function priorityOf(sortOrder: unknown): number {

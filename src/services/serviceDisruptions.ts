@@ -1,5 +1,7 @@
 import { getServiceContext } from '../utils/time.js';
 import { getStopName, StationMatcher } from './stationService.js';
+import { riderLines } from './stationInfoService.js';
+import { nycIso } from '../utils/time.js';
 import type { AlertCategory, AlertSeverity, ServiceDisruptionsArgs, SubwayAlert } from '../types/index.js';
 
 export interface DisruptionInfo {
@@ -10,7 +12,7 @@ export interface DisruptionInfo {
   title: string;
   description: string | null;
   affectedStations: string[];
-  activeUntil: number | null;
+  activeUntil: string | null;
 }
 
 // The system-wide overview lists every disruption; full planned-work text for all of them
@@ -79,14 +81,14 @@ export class ServiceDisruptionAnalyzer {
     const names = alert.affectedStopIds.map(getStopName);
 
     return {
-      lines: alert.affectedLines,
+      lines: riderLines(alert.affectedLines),
       severity: alert.severity,
       category: alert.category,
       alertType: alert.alertType,
       title: alert.header || 'Service Alert',
       description: alert.description,
       affectedStations: [...new Set(names)],
-      activeUntil: alert.activePeriod?.end ?? null
+      activeUntil: alert.activePeriod?.end ? nycIso(alert.activePeriod.end) : null
     };
   }
 }
