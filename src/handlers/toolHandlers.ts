@@ -406,15 +406,18 @@ export async function handleServiceStatus(args: ServiceStatusArgs): Promise<Tool
       staleFeeds: data.feedStatus?.staleFeeds ?? []
     };
 
-    let message = `Service status for ${line ? `the ${line} line` : 'the system'}`;
+    // Also in data.note (like next_trains): clients that read only data still see them
+    const notes: string[] = [];
     if (alerts.length > 3) {
-      message += `: showing the 3 most severe of ${alerts.length} alerts (subway_alerts lists them all)`;
+      notes.push(`Showing the 3 most severe of ${alerts.length} alerts; subway_alerts lists them all.`);
     }
     if (line && liveTripsOnLine(data, line) === 0) {
       await ensureDataLoaded();
       result.servicePattern = servicePattern(line);
-      message += `. No ${lineName(line)} trains are currently reported by the MTA${result.servicePattern ? '; servicePattern says when the line normally runs' : ''}`;
+      notes.push(`No ${lineName(line)} trains are currently reported by the MTA${result.servicePattern ? '; servicePattern says when the line normally runs' : ''}.`);
     }
+    if (notes.length > 0) result.note = notes.join(' ');
+    const message = `Service status for ${line ? `the ${line} line` : 'the system'}${notes.length > 0 ? `: ${notes.join(' ')}` : ''}`;
     return createStandardResponse(result, message);
   } catch (error) {
     return createStandardResponse(null, "Service status temporarily unavailable.", true);

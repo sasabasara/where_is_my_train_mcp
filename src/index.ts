@@ -122,7 +122,8 @@ const serviceStatusOutputSchema = standardResponseShape(
     }).passthrough()).optional(),
     unavailableFeeds: z.array(z.string()).optional(),
     staleFeeds: z.array(z.string()).optional(),
-    servicePattern: z.string().nullable().optional()
+    servicePattern: z.string().nullable().optional(),
+    note: z.string().optional()
   }).passthrough().nullable()
 );
 
@@ -423,7 +424,7 @@ export function createMcpServer() {
     "service_status",
     {
       title: "Service Status",
-      description: "Quick service snapshot for the whole system or one line: number of trains currently running, number of alerts in effect, the 3 most severe alerts, and any MTA train feeds that are currently unavailable",
+      description: "Quick service snapshot for the whole system or one line: number of trains currently running, number of alerts in effect, the 3 most severe alerts, and any MTA train feeds that are currently unavailable. A note says when more alerts are in effect than shown (subway_alerts has them all), or when the MTA reports no trains on the line (with servicePattern)",
       inputSchema: {
         line: z.string().optional().describe("Limit to one line, e.g. \"L\" or \"6\"")
       },

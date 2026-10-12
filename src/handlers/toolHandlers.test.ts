@@ -179,14 +179,21 @@ describe('service_status', () => {
     const { data, message } = payload(await handleServiceStatus({}));
     expect(data.activeAlerts).toBeGreaterThan(3);
     expect(data.topAlerts).toHaveLength(3);
-    expect(message).toMatch(/showing the 3 most severe of \d+ alerts \(subway_alerts lists them all\)/);
+    expect(data.note).toMatch(/^Showing the 3 most severe of \d+ alerts; subway_alerts lists them all\.$/);
+    expect(message).toContain(data.note);
   });
 
   it('says when a line has no trains reported, with the MTA service pattern', async () => {
     vi.mocked(fetchMTAData).mockResolvedValueOnce({ entity: [], ...allFeedsUp } as any);
     const { data, message } = payload(await handleServiceStatus({ line: 'B' }));
     expect(data.servicePattern).toMatch(/weekdays only/);
+    expect(data.note).toMatch(/No B trains are currently reported by the MTA/);
     expect(message).toMatch(/No B trains are currently reported by the MTA/);
+  });
+
+  it('has no note when there is nothing to add', async () => {
+    const { data } = payload(await handleServiceStatus({ line: 'l' }));
+    expect(data.note).toBeUndefined();
   });
 
   it('filters trips and alerts by line and surfaces failed feeds', async () => {
